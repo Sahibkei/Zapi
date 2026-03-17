@@ -156,13 +156,14 @@ function renderLandingPage(): string {
           <h2>MVP support</h2>
           <ul class="list">
             <li>SEC EDGAR live pull</li>
-            <li>Annual income, balance sheet, and cash flow</li>
+            <li>Annual and quarterly statements</li>
+            <li>Optional TTM on income and cash flow</li>
             <li><code>normalized</code> and <code>matrix</code> formats</li>
           </ul>
         </article>
         <article class="card">
           <h2>Contract example</h2>
-          <p>Normalized responses are compact by default. Add <code>&debug=true</code> only when you need source trace facts.</p>
+          <p>Try <code>?statement=income_statement&frequency=quarterly&includeTtm=true</code>. Add <code>&debug=true</code> only when you need source trace facts.</p>
         </article>
       </section>
     </main>
@@ -232,7 +233,7 @@ export async function buildServer(): Promise<FastifyInstance> {
             },
             frequency: {
               type: "string",
-              enum: ["annual"]
+              enum: ["annual", "quarterly"]
             },
             view: {
               type: "string",
@@ -246,6 +247,10 @@ export async function buildServer(): Promise<FastifyInstance> {
               type: "integer",
               minimum: 1,
               maximum: 10
+            },
+            includeTtm: {
+              type: "boolean",
+              description: "Append a TTM column when economically valid"
             },
             debug: {
               type: "boolean",
@@ -263,6 +268,7 @@ export async function buildServer(): Promise<FastifyInstance> {
         view: request.query.view,
         format: request.query.format,
         periods: request.query.periods,
+        includeTtm: request.query.includeTtm,
         debug: request.query.debug
       });
 

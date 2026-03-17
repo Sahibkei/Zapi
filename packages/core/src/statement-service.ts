@@ -1,4 +1,5 @@
 import {
+  type StatementFrequency,
   type NormalizedStatementResponse,
   type StatementRequest,
   type StatementType
@@ -6,10 +7,12 @@ import {
 import { UnsupportedFeatureError } from "./errors";
 
 export interface SecEdgarStatementClient {
-  getAnnualStatement(input: {
+  getStatement(input: {
     ticker: string;
     statement: StatementType;
+    frequency: StatementFrequency;
     periods: number;
+    includeTtm: boolean;
   }): Promise<NormalizedStatementResponse>;
 }
 
@@ -25,17 +28,12 @@ export function createStatementService(dependencies: {
         );
       }
 
-      if (input.frequency !== "annual") {
-        throw new UnsupportedFeatureError(
-          "The SEC-first MVP currently supports only annual statements.",
-          { supportedFrequency: "annual" }
-        );
-      }
-
-      return dependencies.secEdgarClient.getAnnualStatement({
+      return dependencies.secEdgarClient.getStatement({
         ticker: input.ticker,
         statement: input.statement,
-        periods: input.periods
+        frequency: input.frequency,
+        periods: input.periods,
+        includeTtm: input.includeTtm
       });
     }
   };

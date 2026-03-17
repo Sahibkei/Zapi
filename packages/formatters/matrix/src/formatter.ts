@@ -18,6 +18,7 @@ export function formatMatrixStatement(
       metric_code: row.metricCode,
       label: row.label,
       depth: row.depth,
+      row_kind: row.rowKind,
       values: row.values
     })),
     footer: `Fiscal year ends in ${statement.meta.fiscalYearEnd} | ${statement.meta.currency}`

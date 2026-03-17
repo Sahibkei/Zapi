@@ -1,0 +1,9 @@
+{
+  "name": "Synthetic Example Corp.",
+  "tickers": ["SYN"],
+  "sic": "3571",
+  "fiscalYearEnd": "0930",
+  "filings": {
+    "recent": {}
+  }
+}

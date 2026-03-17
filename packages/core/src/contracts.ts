@@ -6,7 +6,7 @@ export const StatementTypeSchema = z.enum([
   "cash_flow"
 ]);
 
-export const FrequencySchema = z.enum(["annual"]);
+export const FrequencySchema = z.enum(["annual", "quarterly"]);
 export const StatementViewSchema = z.enum(["restated", "as_reported"]);
 export const OutputFormatSchema = z.enum(["normalized", "matrix"]);
 export const SectorProfileSchema = z.enum(["industrial", "bank", "insurer", "unknown"]);
@@ -18,19 +18,21 @@ export const StatementRequestSchema = z.object({
   view: StatementViewSchema.default("restated"),
   format: OutputFormatSchema.default("normalized"),
   periods: z.coerce.number().int().min(1).max(10).default(5),
+  includeTtm: z.coerce.boolean().default(true),
   debug: z.coerce.boolean().default(false)
 });
 
 export type StatementQueryInput = z.input<typeof StatementRequestSchema>;
 export type StatementRequest = z.infer<typeof StatementRequestSchema>;
 export type StatementType = z.infer<typeof StatementTypeSchema>;
+export type StatementFrequency = z.infer<typeof FrequencySchema>;
 export type SectorProfile = z.infer<typeof SectorProfileSchema>;
 
 export interface CanonicalFact {
   metricCode: string;
   displayLabel: string;
   statement: StatementType;
-  periodType: "annual";
+  periodType: "annual" | "quarterly" | "ttm";
   periodEnd: string;
   periodLabel: string;
   view: "restated";
@@ -50,7 +52,7 @@ export interface StatementMeta {
   ticker: string;
   companyName: string;
   statement: StatementType;
-  frequency: "annual";
+  frequency: StatementFrequency;
   view: "restated";
   currency: string;
   fiscalYearEnd: string;
@@ -65,6 +67,7 @@ export interface StatementRow {
   label: string;
   depth: number;
   unit: string;
+  rowKind: "section" | "metric";
   values: Array<number | null>;
   qualityFlags: string[];
 }
@@ -94,6 +97,7 @@ export interface MatrixStatementResponse {
     metric_code: string;
     label: string;
     depth: number;
+    row_kind: "section" | "metric";
     values: Array<number | null>;
   }>;
   footer: string;

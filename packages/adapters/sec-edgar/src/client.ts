@@ -1,10 +1,11 @@
 import {
   NotFoundError,
   UpstreamError,
+  type StatementFrequency,
   type NormalizedStatementResponse,
   type StatementType
 } from "../../../core/src";
-import { mapAnnualStatement } from "./mapper";
+import { mapStatement } from "./mapper";
 import type { SecCompanyFacts, SecSubmissions, SecTickerEntry } from "./types";
 
 const SEC_BASE_URL = "https://data.sec.gov";
@@ -46,10 +47,12 @@ export function createSecEdgarClient(options: SecEdgarClientOptions) {
     return entry;
   }
 
-  async function getAnnualStatement(input: {
+  async function getStatement(input: {
     ticker: string;
     statement: StatementType;
+    frequency: StatementFrequency;
     periods: number;
+    includeTtm: boolean;
   }): Promise<NormalizedStatementResponse> {
     const company = await resolveTicker(input.ticker);
     const cik = company.cik_str.toString().padStart(10, "0");
@@ -59,16 +62,18 @@ export function createSecEdgarClient(options: SecEdgarClientOptions) {
       fetchJson<SecSubmissions>(`${SEC_BASE_URL}/submissions/CIK${cik}.json`)
     ]);
 
-    return mapAnnualStatement({
+    return mapStatement({
       ticker: company.ticker,
       requestedStatement: input.statement,
+      frequency: input.frequency,
       periods: input.periods,
+      includeTtm: input.includeTtm,
       companyFacts: facts,
       submissions
     });
   }
 
   return {
-    getAnnualStatement
+    getStatement
   };
 }

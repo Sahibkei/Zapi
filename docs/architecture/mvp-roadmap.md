@@ -11,6 +11,7 @@ This repository now targets the first executable slice from the architecture pap
 - Landing page and OpenAPI docs
 - Contract fixtures and tests
 - Compact normalized responses with optional debug trace data
+- Quarterly and TTM support for SEC-first statement assembly
 
 ## Immediate next steps
 
