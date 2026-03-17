@@ -27,7 +27,7 @@ function csvEscape(value) {
   return text;
 }
 
-function buildCsv(statement) {
+function buildNormalizedCsv(statement) {
   const header = ["metric_code", "label", "unit", "depth", ...statement.columns];
   const lines = [header.map(csvEscape).join(",")];
 
@@ -50,6 +50,24 @@ function buildCsv(statement) {
   return `${lines.join("\n")}\n`;
 }
 
+function buildMatrixCsv(statement) {
+  const lines = [];
+  lines.push([statement.meta.titleSlug, ...statement.columns].map(csvEscape).join(","));
+
+  for (const row of statement.rows) {
+    const label = `${"    ".repeat(row.depth)}${row.label}`;
+    lines.push([label, ...row.values].map(csvEscape).join(","));
+  }
+
+  lines.push(
+    [statement.footer, ...statement.columns.map(() => "")]
+      .map(csvEscape)
+      .join(",")
+  );
+
+  return `${lines.join("\n")}\n`;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const baseUrl = args["base-url"] ?? "http://127.0.0.1:3000";
@@ -59,7 +77,7 @@ async function main() {
   const frequency = args.frequency ?? "annual";
   const view = args.view ?? "restated";
   const periods = args.periods ?? "5";
-  const format = args.format ?? "normalized";
+  const format = args.format ?? "matrix";
   const apiKey = args["api-key"];
   const output = resolve(
     args.output ?? `artifacts/${regime}-${identifier}-${statement}-${frequency}.csv`
@@ -82,11 +100,9 @@ async function main() {
     throw new Error(`Export failed (${response.status}): ${JSON.stringify(body)}`);
   }
 
-  if (format !== "normalized") {
-    throw new Error("CSV export currently supports only normalized responses.");
-  }
-
-  const csv = buildCsv(body);
+  const csv = format === "matrix"
+    ? buildMatrixCsv(body)
+    : buildNormalizedCsv(body);
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, csv, "utf8");
 

@@ -102,18 +102,23 @@ async function main() {
       continue;
     }
 
+    const format = regime.regime === "sec_edgar" ? "matrix" : "normalized";
     const params = new URLSearchParams({
       regime: regime.regime,
       statement: sample.statement,
       frequency: sample.frequency,
-      format: "normalized",
+      format,
       periods: sample.periods
     });
     const url = `${baseUrl}/v1/statements/${encodeURIComponent(sample.identifier)}?${params.toString()}`;
     const { response, json } = await fetchJson(url, headers);
 
     if (response.ok) {
-      const csv = buildCsv(json);
+      const csv = format === "matrix"
+        ? `${[[json.meta.titleSlug, ...json.columns].map(csvEscape).join(","),
+            ...json.rows.map((row) => [`${"    ".repeat(row.depth)}${row.label}`, ...row.values].map(csvEscape).join(",")),
+            [json.footer, ...json.columns.map(() => "")].map(csvEscape).join(",")].join("\n")}\n`
+        : buildCsv(json);
       const outputPath = resolve(outputDir, sample.filename);
       await writeFile(outputPath, csv, "utf8");
       report.push({

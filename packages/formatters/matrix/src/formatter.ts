@@ -24,3 +24,31 @@ export function formatMatrixStatement(
     footer: `Fiscal year ends in ${statement.meta.fiscalYearEnd} | ${statement.meta.currency}`
   };
 }
+
+function csvEscape(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  const text = String(value);
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, "\"\"")}"`;
+  }
+
+  return text;
+}
+
+export function formatMatrixCsv(statement: MatrixStatementResponse): string {
+  const lines: string[] = [];
+  lines.push(
+    [statement.meta.titleSlug, ...statement.columns].map(csvEscape).join(",")
+  );
+
+  for (const row of statement.rows) {
+    const label = `${"    ".repeat(row.depth)}${row.label}`;
+    lines.push([label, ...row.values].map(csvEscape).join(","));
+  }
+
+  lines.push([statement.footer, ...statement.columns.map(() => "")].map(csvEscape).join(","));
+  return `${lines.join("\n")}\n`;
+}

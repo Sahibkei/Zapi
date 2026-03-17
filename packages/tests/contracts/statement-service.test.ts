@@ -4,6 +4,7 @@ import syntheticQuarterlyCompanyFacts from "../fixtures/sec/synthetic-quarterly-
 import syntheticQuarterlySubmissions from "../fixtures/sec/synthetic-quarterly-submissions.json";
 import {
   createStatementService,
+  formatMatrixCsv,
   formatMatrixStatement,
   formatNormalizedStatement
 } from "../../core/src";
@@ -194,6 +195,27 @@ describe("statement service", () => {
       540
     ]);
     expect(matrix.footer).toBe("Fiscal year ends in Sep 30 | USD");
+  });
+
+  it("formats workbook-style matrix csv with title row, indentation, and footer", () => {
+    const statement = mapStatement({
+      ticker: "SYN",
+      requestedStatement: "income_statement",
+      frequency: "annual",
+      view: "restated",
+      periods: 2,
+      includeTtm: true,
+      companyFacts: syntheticQuarterlyCompanyFacts,
+      submissions: syntheticQuarterlySubmissions
+    });
+
+    const csv = formatMatrixCsv(formatMatrixStatement(statement));
+    const lines = csv.trimEnd().split("\n");
+
+    expect(lines[0]).toBe("SYN_income-statement_Annual_Restated,2024,2025,TTM");
+    expect(lines[1]).toBe("Revenue,,,");
+    expect(lines[2]).toBe("    Total Revenue,500,540,540");
+    expect(lines.at(-1)).toBe("Fiscal year ends in Sep 30 | USD,,,");
   });
 
   it("allows as-reported requests through the service layer", async () => {
