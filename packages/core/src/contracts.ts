@@ -24,7 +24,7 @@ export const StatementRequestSchema = z.object({
   frequency: FrequencySchema.default("annual"),
   view: StatementViewSchema.default("restated"),
   format: OutputFormatSchema.default("matrix"),
-  periods: z.coerce.number().int().min(1).max(10).default(5),
+  periods: z.coerce.number().int().min(1).max(20).default(5),
   includeTtm: z.coerce.boolean().default(true),
   debug: z.coerce.boolean().default(false)
 });

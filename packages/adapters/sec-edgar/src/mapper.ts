@@ -2278,6 +2278,7 @@ export function mapStatement(input: {
   outputColumns = referenceSeries.displayCells.map((cell) => cell.label);
   const hasAnyTtm =
     input.includeTtm &&
+    input.frequency === "quarterly" &&
     isDurationStatement(input.requestedStatement) &&
     preparedSeries.some((series) =>
       buildTtmCell(series.definition, series.quarterlyCells, series.annualCells) !== null
@@ -2321,7 +2322,11 @@ export function mapStatement(input: {
       });
     }
 
-    if (input.includeTtm && isDurationStatement(input.requestedStatement)) {
+    if (
+      input.includeTtm &&
+      input.frequency === "quarterly" &&
+      isDurationStatement(input.requestedStatement)
+    ) {
       const ttmCell = buildTtmCell(definition, quarterlyCells, annualCells);
       if (ttmCell) {
         metricValues[definition.metricCode].TTM = ttmCell.value;

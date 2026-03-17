@@ -628,11 +628,11 @@ export async function buildServer(): Promise<FastifyInstance> {
             periods: {
               type: "integer",
               minimum: 1,
-              maximum: 10
+              maximum: 20
             },
             includeTtm: {
               type: "boolean",
-              description: "Append a TTM column when economically valid"
+              description: "Append a TTM column for quarterly duration statements when economically valid"
             },
             debug: {
               type: "boolean",

@@ -187,14 +187,10 @@ describe("statement service", () => {
     });
 
     const matrix = formatMatrixStatement(statement);
-    expect(matrix.columns).toEqual(["2024", "2025", "TTM"]);
+    expect(matrix.columns).toEqual(["2024", "2025"]);
     expect(matrix.rows[0]?.row_kind).toBe("metric");
     expect(matrix.rows[0]?.label).toBe("Gross Profit");
-    expect(matrix.rows.find((row) => row.metric_code === "revenue_total")?.values).toEqual([
-      500,
-      540,
-      540
-    ]);
+    expect(matrix.rows.find((row) => row.metric_code === "revenue_total")?.values).toEqual([500, 540]);
     expect(matrix.footer).toBe("Fiscal year ends in Sep 30 | USD");
   });
 
@@ -213,10 +209,10 @@ describe("statement service", () => {
     const csv = formatMatrixCsv(formatMatrixStatement(statement));
     const lines = csv.trimEnd().split("\n");
 
-    expect(lines[0]).toBe("SYN_income-statement_Annual_Restated,2024,2025,TTM");
-    expect(lines[1]).toBe("Gross Profit,210,220,220");
-    expect(lines[2]).toBe("    Total Revenue,500,540,540");
-    expect(lines.at(-1)).toBe("Fiscal year ends in Sep 30 | USD,,,");
+    expect(lines[0]).toBe("SYN_income-statement_Annual_Restated,2024,2025");
+    expect(lines[1]).toBe("Gross Profit,210,220");
+    expect(lines[2]).toBe("    Total Revenue,500,540");
+    expect(lines.at(-1)).toBe("Fiscal year ends in Sep 30 | USD,,");
   });
 
   it("adds formatted display values in thousands with parentheses for negatives", () => {
@@ -320,7 +316,7 @@ describe("statement service", () => {
     expect(statement.periods["2025-Q3"].net_income).toBe(30);
   });
 
-  it("adds TTM to annual duration statements without polluting balance sheet output", () => {
+  it("does not append TTM to annual statements", () => {
     const incomeStatement = mapStatement({
       ticker: "SYN",
       requestedStatement: "income_statement",
@@ -332,12 +328,11 @@ describe("statement service", () => {
       submissions: syntheticQuarterlySubmissions
     });
 
-    expect(incomeStatement.columns).toEqual(["2024", "2025", "TTM"]);
-    expect(incomeStatement.periods.TTM.revenue_total).toBe(540);
-    expect(incomeStatement.periods.TTM.shares_diluted).toBe(11.75);
+    expect(incomeStatement.columns).toEqual(["2024", "2025"]);
+    expect(incomeStatement.periods.TTM).toBeUndefined();
   });
 
-  it("uses annual proxies for per-share TTM metrics when quarter subtraction is invalid", () => {
+  it("does not emit annual TTM proxy columns for per-share metrics", () => {
     const statement = mapStatement({
       ticker: "AAPL",
       requestedStatement: "income_statement",
@@ -349,8 +344,8 @@ describe("statement service", () => {
       submissions
     });
 
-    expect(statement.periods.TTM.eps_diluted).toBe(7.46);
-    expect(statement.periods.TTM.shares_diluted).toBe(15004697000);
+    expect(statement.columns).toEqual(["2025"]);
+    expect(statement.periods.TTM).toBeUndefined();
   });
 
   it("uses the bank income template and derives revenue from bank-specific concepts", () => {
@@ -401,8 +396,8 @@ describe("statement service", () => {
     expect(asReported.meta.titleSlug).toBe("RST_income-statement_Annual_AsReported");
     expect(restated.periods["2024"].revenue_total).toBe(1100);
     expect(asReported.periods["2024"].revenue_total).toBe(1000);
-    expect(restated.periods.TTM.eps_diluted).toBe(1.2);
-    expect(asReported.periods.TTM.eps_diluted).toBe(1.0);
+    expect(restated.periods.TTM).toBeUndefined();
+    expect(asReported.periods.TTM).toBeUndefined();
   });
 
   it("routes non-US requests through the selected adapter and exposes regime capabilities", async () => {
