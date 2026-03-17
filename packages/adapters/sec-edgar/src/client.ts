@@ -1,6 +1,7 @@
 import {
   NotFoundError,
   UpstreamError,
+  type AdapterCapabilities,
   type StatementFrequency,
   type NormalizedStatementResponse,
   type StatementType,
@@ -76,7 +77,23 @@ export function createSecEdgarClient(options: SecEdgarClientOptions) {
     });
   }
 
+  function getCapabilities(): AdapterCapabilities {
+    return {
+      regime: "sec_edgar",
+      status: "live",
+      identifierLabel: "ticker",
+      identifierExample: "AAPL",
+      statementSupport: "full",
+      notes: [
+        "Live SEC EDGAR statement support is enabled.",
+        "Use exchange ticker symbols for issuer resolution."
+      ],
+      requiredEnv: ["SEC_USER_AGENT"]
+    };
+  }
+
   return {
-    getStatement
+    getStatement,
+    getCapabilities
   };
 }

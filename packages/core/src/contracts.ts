@@ -10,9 +10,16 @@ export const FrequencySchema = z.enum(["annual", "quarterly"]);
 export const StatementViewSchema = z.enum(["restated", "as_reported"]);
 export const OutputFormatSchema = z.enum(["normalized", "matrix"]);
 export const SectorProfileSchema = z.enum(["industrial", "bank", "insurer", "unknown"]);
+export const SourceRegimeSchema = z.enum([
+  "sec_edgar",
+  "companies_house",
+  "edinet",
+  "india_placeholder"
+]);
 
 export const StatementRequestSchema = z.object({
-  ticker: z.string().trim().toUpperCase().min(1).max(10),
+  ticker: z.string().trim().toUpperCase().min(1).max(32),
+  regime: SourceRegimeSchema.default("sec_edgar"),
   statement: StatementTypeSchema.default("income_statement"),
   frequency: FrequencySchema.default("annual"),
   view: StatementViewSchema.default("restated"),
@@ -28,6 +35,7 @@ export type StatementType = z.infer<typeof StatementTypeSchema>;
 export type StatementFrequency = z.infer<typeof FrequencySchema>;
 export type StatementView = z.infer<typeof StatementViewSchema>;
 export type SectorProfile = z.infer<typeof SectorProfileSchema>;
+export type StatementSourceRegime = z.infer<typeof SourceRegimeSchema>;
 
 export interface CanonicalFact {
   metricCode: string;
@@ -42,7 +50,7 @@ export interface CanonicalFact {
   signPolicy: "natural_source_sign";
   hierarchyPath: string[];
   depth: number;
-  sourceRegime: "sec_edgar";
+  sourceRegime: StatementSourceRegime;
   sourceConcept: string;
   sourceFiling: string;
   sourceAccession: string;
@@ -58,7 +66,7 @@ export interface StatementMeta {
   currency: string;
   fiscalYearEnd: string;
   titleSlug: string;
-  sourceRegime: "sec_edgar";
+  sourceRegime: StatementSourceRegime;
   sectorProfile: SectorProfile;
   qualityFlags: string[];
 }

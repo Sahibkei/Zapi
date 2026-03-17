@@ -12,11 +12,12 @@ This repository now targets the first executable slice from the architecture pap
 - Contract fixtures and tests
 - Compact normalized responses with optional debug trace data
 - Quarterly and TTM support for SEC-first statement assembly
+- Regime-aware federation layer with Companies House, EDINET, and India adapter slots
 
 ## Immediate next steps
 
-1. Add quarterly support and TTM assembly
-2. Introduce stronger statement-family detection from source facts
-3. Expand row trees and sector-specific mappings
-4. Add auth, rate-limit handling, and structured observability
-5. Add UK and Japan adapters behind the same contract
+1. Add a UK filing parser behind the Companies House adapter
+2. Add an EDINET filing parser and taxonomy mappings
+3. Introduce stronger statement-family detection from source facts
+4. Expand row trees and sector-specific mappings
+5. Add auth, rate-limit handling, and structured observability

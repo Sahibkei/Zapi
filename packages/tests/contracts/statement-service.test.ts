@@ -9,6 +9,16 @@ import {
 } from "../../core/src";
 import { mapStatement } from "../../adapters/sec-edgar/src/mapper";
 
+const secCapabilities = {
+  regime: "sec_edgar" as const,
+  status: "live" as const,
+  identifierLabel: "ticker",
+  identifierExample: "AAPL",
+  statementSupport: "full" as const,
+  notes: ["test"],
+  requiredEnv: ["SEC_USER_AGENT"]
+};
+
 const syntheticBankCompanyFacts = {
   cik: 123456,
   entityName: "Synthetic Bank Corp.",
@@ -129,6 +139,7 @@ describe("statement service", () => {
   it("maps annual income statements into the normalized contract", async () => {
     const service = createStatementService({
       secEdgarClient: {
+        getCapabilities: () => secCapabilities,
         getStatement: async ({ ticker, statement, frequency, view, periods, includeTtm }) =>
           mapStatement({
             ticker,
@@ -145,6 +156,7 @@ describe("statement service", () => {
 
     const result = await service.getStatement({
       ticker: "AAPL",
+      regime: "sec_edgar",
       statement: "income_statement",
       frequency: "annual",
       view: "restated",
@@ -187,6 +199,7 @@ describe("statement service", () => {
   it("allows as-reported requests through the service layer", async () => {
     const service = createStatementService({
       secEdgarClient: {
+        getCapabilities: () => secCapabilities,
         getStatement: async ({ ticker, statement, frequency, view, periods, includeTtm }) =>
           mapStatement({
             ticker,
@@ -203,6 +216,7 @@ describe("statement service", () => {
 
     const statement = await service.getStatement({
       ticker: "RST",
+      regime: "sec_edgar",
       statement: "income_statement",
       frequency: "annual",
       view: "as_reported",
@@ -343,5 +357,58 @@ describe("statement service", () => {
     expect(asReported.periods["2024"].revenue_total).toBe(1000);
     expect(restated.periods.TTM.eps_diluted).toBe(1.2);
     expect(asReported.periods.TTM.eps_diluted).toBe(1.0);
+  });
+
+  it("routes non-US requests through the selected adapter and exposes regime capabilities", async () => {
+    const service = createStatementService({
+      secEdgarClient: {
+        getCapabilities: () => secCapabilities,
+        getStatement: async () => {
+          throw new Error("sec adapter should not be called");
+        }
+      },
+      companiesHouseClient: {
+        getCapabilities: () => ({
+          regime: "companies_house",
+          status: "scaffolded",
+          identifierLabel: "company number",
+          identifierExample: "00001995",
+          statementSupport: "parser_pending",
+          notes: ["test"],
+          requiredEnv: ["COMPANIES_HOUSE_API_KEY"]
+        }),
+        getStatement: async ({ identifier }) =>
+          mapStatement({
+            ticker: identifier,
+            requestedStatement: "income_statement",
+            frequency: "annual",
+            view: "restated",
+            periods: 1,
+            includeTtm: false,
+            companyFacts: syntheticRestatementCompanyFacts as never,
+            submissions: syntheticRestatementSubmissions as never
+          })
+      }
+    });
+
+    const statement = await service.getStatement({
+      ticker: "00001995",
+      regime: "companies_house",
+      statement: "income_statement",
+      frequency: "annual",
+      view: "restated",
+      format: "normalized",
+      periods: 1,
+      includeTtm: false,
+      debug: false
+    });
+
+    expect(statement.meta.ticker).toBe("00001995");
+    expect(service.listRegimes().map((regime) => regime.regime)).toEqual([
+      "sec_edgar",
+      "companies_house",
+      "edinet",
+      "india_placeholder"
+    ]);
   });
 });

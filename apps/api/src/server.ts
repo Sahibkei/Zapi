@@ -4,12 +4,15 @@ import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
   createStatementService,
-  formatNormalizedStatement,
   formatMatrixStatement,
+  formatNormalizedStatement,
   isZapiError,
   StatementRequestSchema,
   type StatementQueryInput
 } from "../../../packages/core/src";
+import { createCompaniesHouseClient } from "../../../packages/adapters/companies-house/src";
+import { createEdinetClient } from "../../../packages/adapters/edinet/src";
+import { createIndiaPlaceholderClient } from "../../../packages/adapters/india/src";
 import { createSecEdgarClient } from "../../../packages/adapters/sec-edgar/src";
 
 function renderLandingPage(): string {
@@ -131,16 +134,17 @@ function renderLandingPage(): string {
   <body>
     <main>
       <section class="hero">
-        <span class="eyebrow">Zapi / SEC-first MVP</span>
+        <span class="eyebrow">Zapi / Federation Layer</span>
         <h1>Live fundamentals without a warehouse.</h1>
         <p class="lede">
           Zapi pulls official filing data on demand, normalizes it into a stable house contract,
-          and returns either machine-first JSON or a Morningstar-style matrix for direct site use.
+          and exposes one API surface across SEC EDGAR, Companies House, EDINET, and future
+          India support.
         </p>
         <div class="actions">
           <a class="button" href="/docs">Open API docs</a>
           <a class="button secondary" href="/integration">Integration guide</a>
-          <a class="button secondary" href="/v1/statements/AAPL?statement=income_statement&format=normalized">Try AAPL income statement</a>
+          <a class="button secondary" href="/v1/regimes">Inspect regime status</a>
         </div>
       </section>
 
@@ -150,22 +154,22 @@ function renderLandingPage(): string {
           <ul class="list">
             <li><code>GET /health</code></li>
             <li><code>GET /docs</code></li>
-            <li><code>GET /v1/statements/:ticker</code></li>
+            <li><code>GET /v1/regimes</code></li>
+            <li><code>GET /v1/statements/:identifier</code></li>
           </ul>
         </article>
         <article class="card">
-          <h2>MVP support</h2>
+          <h2>Regime coverage</h2>
           <ul class="list">
-            <li>SEC EDGAR live pull</li>
-            <li>Annual and quarterly statements</li>
-            <li>Optional TTM on income and cash flow</li>
-            <li><code>restated</code> and <code>as_reported</code> views</li>
-            <li><code>normalized</code> and <code>matrix</code> formats</li>
+            <li>SEC EDGAR live statement support</li>
+            <li>Companies House adapter scaffold</li>
+            <li>EDINET adapter scaffold</li>
+            <li>India placeholder slot</li>
           </ul>
         </article>
         <article class="card">
           <h2>Contract example</h2>
-          <p>Try <code>?statement=income_statement&frequency=quarterly&includeTtm=true</code> or <code>?view=as_reported</code>. Add <code>&debug=true</code> only when you need source trace facts.</p>
+          <p>Use <code>?regime=sec_edgar</code> for live US statements today. Use <code>/v1/regimes</code> to see what is live, scaffolded, or still a placeholder across the wider architecture.</p>
         </article>
       </section>
     </main>
@@ -229,19 +233,20 @@ function renderIntegrationPage(): string {
     <main>
       <section class="panel">
         <h1>Integration Guide</h1>
-        <p>Use the normalized endpoint for app logic and the matrix endpoint for Morningstar-style rendering.</p>
+        <p>Use the normalized endpoint for app logic and the matrix endpoint for Morningstar-style rendering. Choose the source regime explicitly when you are outside the US.</p>
       </section>
       <section class="panel">
         <h2>Recommended endpoint patterns</h2>
-        <pre><code>GET /v1/statements/AAPL?statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true
-GET /v1/statements/AAPL?statement=income_statement&frequency=annual&format=normalized&periods=5&view=as_reported
-GET /v1/statements/JPM?statement=income_statement&frequency=quarterly&format=normalized&periods=4&includeTtm=true
-GET /v1/statements/MSFT?statement=cash_flow&frequency=annual&format=matrix&periods=3&includeTtm=true</code></pre>
+        <pre><code>GET /v1/statements/AAPL?regime=sec_edgar&statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true
+GET /v1/statements/AAPL?regime=sec_edgar&statement=income_statement&frequency=annual&format=normalized&periods=5&view=as_reported
+GET /v1/statements/00001995?regime=companies_house&statement=income_statement&frequency=annual&format=normalized
+GET /v1/statements/E00001?regime=edinet&statement=income_statement&frequency=annual&format=normalized
+GET /v1/regimes</code></pre>
       </section>
       <section class="panel">
         <h2>React usage</h2>
         <pre><code>const response = await fetch(
-  "/v1/statements/AAPL?statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true"
+  "/v1/statements/AAPL?regime=sec_edgar&statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true"
 );
 const statement = await response.json();
 
@@ -258,7 +263,11 @@ statement.periods["2025"].revenue_total;</code></pre>
         <p><code>view=restated</code> returns the latest filing for a period. <code>view=as_reported</code> returns the earliest filing for that same period, which is useful when later amendments changed the numbers.</p>
       </section>
       <section class="panel">
-        <p><a href="/">Back to landing page</a> · <a href="/docs">Open Swagger docs</a></p>
+        <h2>Regime selection</h2>
+        <p><code>regime=sec_edgar</code> is live today. <code>companies_house</code> and <code>edinet</code> are wired into the federation layer but still return parser-pending responses until their filing parsers are added. <code>india_placeholder</code> remains the reserved future adapter slot.</p>
+      </section>
+      <section class="panel">
+        <p><a href="/">Back to landing page</a> | <a href="/docs">Open Swagger docs</a></p>
       </section>
     </main>
   </body>
@@ -273,7 +282,17 @@ export async function buildServer(): Promise<FastifyInstance> {
   const secEdgarClient = createSecEdgarClient({
     userAgent: process.env.SEC_USER_AGENT ?? "Zapi Dev dev@zapi.local"
   });
-  const statementService = createStatementService({ secEdgarClient });
+  const companiesHouseClient = createCompaniesHouseClient({
+    apiKey: process.env.COMPANIES_HOUSE_API_KEY
+  });
+  const edinetClient = createEdinetClient();
+  const indiaClient = createIndiaPlaceholderClient();
+  const statementService = createStatementService({
+    secEdgarClient,
+    companiesHouseClient,
+    edinetClient,
+    indiaClient
+  });
 
   await server.register(cors, {
     origin: true
@@ -284,7 +303,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       info: {
         title: "Zapi API",
         version: "0.1.0",
-        description: "Live-pull fundamentals API with SEC-first coverage."
+        description: "Live-pull fundamentals API with a federated source-adapter architecture."
       }
     }
   });
@@ -307,24 +326,36 @@ export async function buildServer(): Promise<FastifyInstance> {
     timestamp: new Date().toISOString()
   }));
 
+  server.get("/v1/regimes", async () => ({
+    regimes: statementService.listRegimes()
+  }));
+
   server.get<{
-    Params: { ticker: string };
+    Params: { identifier: string };
     Querystring: StatementQueryInput;
   }>(
-    "/v1/statements/:ticker",
+    "/v1/statements/:identifier",
     {
       schema: {
-        summary: "Fetch a canonical statement for a ticker",
+        summary: "Fetch a canonical statement for an issuer identifier",
         params: {
           type: "object",
-          required: ["ticker"],
+          required: ["identifier"],
           properties: {
-            ticker: { type: "string", description: "Exchange ticker symbol" }
+            identifier: {
+              type: "string",
+              description: "Ticker, company number, or regime-specific issuer identifier"
+            }
           }
         },
         querystring: {
           type: "object",
           properties: {
+            regime: {
+              type: "string",
+              enum: ["sec_edgar", "companies_house", "edinet", "india_placeholder"],
+              description: "Upstream filing regime"
+            },
             statement: {
               type: "string",
               enum: ["income_statement", "balance_sheet", "cash_flow"]
@@ -337,7 +368,7 @@ export async function buildServer(): Promise<FastifyInstance> {
               type: "string",
               enum: ["restated", "as_reported"]
             },
-          format: {
+            format: {
               type: "string",
               enum: ["normalized", "matrix"]
             },
@@ -360,7 +391,8 @@ export async function buildServer(): Promise<FastifyInstance> {
     },
     async (request) => {
       const input = StatementRequestSchema.parse({
-        ticker: request.params.ticker,
+        ticker: request.params.identifier,
+        regime: request.query.regime,
         statement: request.query.statement,
         frequency: request.query.frequency,
         view: request.query.view,
