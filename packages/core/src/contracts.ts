@@ -17,7 +17,8 @@ export const StatementRequestSchema = z.object({
   frequency: FrequencySchema.default("annual"),
   view: StatementViewSchema.default("restated"),
   format: OutputFormatSchema.default("normalized"),
-  periods: z.coerce.number().int().min(1).max(10).default(5)
+  periods: z.coerce.number().int().min(1).max(10).default(5),
+  debug: z.coerce.boolean().default(false)
 });
 
 export type StatementQueryInput = z.input<typeof StatementRequestSchema>;
@@ -74,6 +75,16 @@ export interface NormalizedStatementResponse {
   rows: StatementRow[];
   periods: Record<string, Record<string, number | null>>;
   facts: CanonicalFact[];
+}
+
+export interface PublicNormalizedStatementResponse {
+  meta: StatementMeta;
+  columns: string[];
+  rows: StatementRow[];
+  periods: Record<string, Record<string, number | null>>;
+  debug?: {
+    facts: CanonicalFact[];
+  };
 }
 
 export interface MatrixStatementResponse {

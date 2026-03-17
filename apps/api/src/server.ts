@@ -4,6 +4,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
   createStatementService,
+  formatNormalizedStatement,
   formatMatrixStatement,
   isZapiError,
   StatementRequestSchema,
@@ -161,7 +162,7 @@ function renderLandingPage(): string {
         </article>
         <article class="card">
           <h2>Contract example</h2>
-          <p>Request with <code>?statement=balance_sheet&format=matrix&periods=5</code> to receive deterministic period columns, rows, and footer metadata.</p>
+          <p>Normalized responses are compact by default. Add <code>&debug=true</code> only when you need source trace facts.</p>
         </article>
       </section>
     </main>
@@ -237,7 +238,7 @@ export async function buildServer(): Promise<FastifyInstance> {
               type: "string",
               enum: ["restated", "as_reported"]
             },
-            format: {
+          format: {
               type: "string",
               enum: ["normalized", "matrix"]
             },
@@ -245,6 +246,10 @@ export async function buildServer(): Promise<FastifyInstance> {
               type: "integer",
               minimum: 1,
               maximum: 10
+            },
+            debug: {
+              type: "boolean",
+              description: "Include source trace data and canonical facts in the response"
             }
           }
         }
@@ -257,7 +262,8 @@ export async function buildServer(): Promise<FastifyInstance> {
         frequency: request.query.frequency,
         view: request.query.view,
         format: request.query.format,
-        periods: request.query.periods
+        periods: request.query.periods,
+        debug: request.query.debug
       });
 
       const statement = await statementService.getStatement(input);
@@ -265,7 +271,7 @@ export async function buildServer(): Promise<FastifyInstance> {
         return formatMatrixStatement(statement);
       }
 
-      return statement;
+      return formatNormalizedStatement(statement, { debug: input.debug });
     }
   );
 

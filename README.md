@@ -42,7 +42,10 @@ Optional environment variables:
 ```bash
 curl "http://localhost:3000/v1/statements/AAPL?statement=income_statement&format=normalized"
 curl "http://localhost:3000/v1/statements/AAPL?statement=balance_sheet&format=matrix"
+curl "http://localhost:3000/v1/statements/AAPL?statement=income_statement&format=normalized&debug=true"
 ```
+
+Normalized responses are compact by default. Source trace data is returned only when `debug=true`.
 
 ## What still needs to be provided
 

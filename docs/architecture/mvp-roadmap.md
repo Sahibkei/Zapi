@@ -10,6 +10,7 @@ This repository now targets the first executable slice from the architecture pap
 - Matrix formatter
 - Landing page and OpenAPI docs
 - Contract fixtures and tests
+- Compact normalized responses with optional debug trace data
 
 ## Immediate next steps
 

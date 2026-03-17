@@ -309,8 +309,9 @@ function buildRows(
       );
       const concept = source?.concept ?? definition.concepts[0] ?? "derived";
       const unitKey = Object.keys(getConceptNode(companyFacts, concept)?.units ?? {})[0];
-      if (unitKey) {
-        currency = unitKey.split("/")[0];
+      const baseUnit = unitKey?.split("/")[0];
+      if (baseUnit && /^[A-Z]{3}$/.test(baseUnit)) {
+        currency = baseUnit;
       }
 
       facts.push({

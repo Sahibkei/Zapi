@@ -1,6 +1,10 @@
 import companyFacts from "../fixtures/sec/aapl-companyfacts.json";
 import submissions from "../fixtures/sec/aapl-submissions.json";
-import { createStatementService, formatMatrixStatement } from "../../core/src";
+import {
+  createStatementService,
+  formatMatrixStatement,
+  formatNormalizedStatement
+} from "../../core/src";
 import { mapAnnualStatement } from "../../adapters/sec-edgar/src/mapper";
 
 describe("statement service", () => {
@@ -31,6 +35,7 @@ describe("statement service", () => {
     expect(result.columns).toEqual(["2023", "2024", "2025"]);
     expect(result.periods["2025"].revenue_total).toBe(416161000000);
     expect(result.periods["2024"].eps_diluted).toBe(6.08);
+    expect(result.meta.currency).toBe("USD");
   });
 
   it("formats matrix output with deterministic footer metadata", () => {
@@ -70,5 +75,23 @@ describe("statement service", () => {
         periods: 3
       })
     ).rejects.toThrow("The SEC-first MVP currently supports only restated output.");
+  });
+
+  it("returns a compact normalized payload by default and exposes facts only in debug mode", () => {
+    const statement = mapAnnualStatement({
+      ticker: "AAPL",
+      requestedStatement: "income_statement",
+      periods: 3,
+      companyFacts,
+      submissions
+    });
+
+    const compact = formatNormalizedStatement(statement);
+    expect("facts" in compact).toBe(false);
+    expect(compact.debug).toBeUndefined();
+
+    const debug = formatNormalizedStatement(statement, { debug: true });
+    expect(debug.debug?.facts).toHaveLength(statement.facts.length);
+    expect(debug.debug?.facts[0]?.metricCode).toBe("revenue_total");
   });
 });
