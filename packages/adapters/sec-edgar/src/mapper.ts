@@ -20,6 +20,7 @@ interface StatementMetricDefinition {
   kind: "instant" | "duration" | "derived";
   quarterlyStrategy?: "discrete_or_subtract" | "discrete_only";
   ttmStrategy?: "sum" | "average" | "latest_annual" | "none";
+  valueTransform?: (value: number) => number;
   derive?: (values: Record<string, number | null>) => number | null;
   deriveDependencies?: string[];
 }
@@ -39,6 +40,20 @@ interface PeriodCell {
   accession: string;
 }
 
+function applyValueTransform(
+  cells: PeriodCell[],
+  transform: ((value: number) => number) | undefined
+): PeriodCell[] {
+  if (!transform) {
+    return cells;
+  }
+
+  return cells.map((cell) => ({
+    ...cell,
+    value: transform(cell.value)
+  }));
+}
+
 function isBaseDefinition(
   definition: StatementMetricDefinition
 ): definition is StatementMetricDefinition & { kind: "instant" | "duration" } {
@@ -52,9 +67,20 @@ function isDurationStatement(statement: StatementType): boolean {
 const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> = {
   income_statement: [
     {
+      metricCode: "gross_profit",
+      label: "Gross Profit",
+      hierarchyPath: ["Gross Profit"],
+      unit: "USD",
+      concepts: ["GrossProfit"],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
       metricCode: "revenue_total",
       label: "Total Revenue",
-      hierarchyPath: ["Revenue", "Total Revenue"],
+      hierarchyPath: ["Gross Profit", "Total Revenue"],
       unit: "USD",
       concepts: [
         "RevenueFromContractWithCustomerExcludingAssessedTax",
@@ -68,20 +94,122 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       ttmStrategy: "sum"
     },
     {
-      metricCode: "gross_profit",
-      label: "Gross Profit",
-      hierarchyPath: ["Profitability", "Gross Profit"],
+      metricCode: "business_revenue",
+      label: "Business Revenue",
+      hierarchyPath: ["Gross Profit", "Total Revenue", "Business Revenue"],
       unit: "USD",
-      concepts: ["GrossProfit"],
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["revenue_total"],
+      derive: (values) => values.revenue_total ?? null
+    },
+    {
+      metricCode: "cost_of_revenue",
+      label: "Cost of Revenue",
+      hierarchyPath: ["Gross Profit", "Cost of Revenue"],
+      unit: "USD",
+      concepts: [
+        "CostOfGoodsSold",
+        "CostOfSales",
+        "CostOfRevenue"
+      ],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["gross_profit", "revenue_total"],
+      derive: (values) => {
+        const grossProfit = values.gross_profit;
+        const revenue = values.revenue_total;
+        if (grossProfit === null || revenue === null) {
+          return null;
+        }
+
+        return grossProfit - revenue;
+      }
+    },
+    {
+      metricCode: "cost_of_goods_and_services",
+      label: "Cost of Goods and Services",
+      hierarchyPath: ["Gross Profit", "Cost of Revenue", "Cost of Goods and Services"],
+      unit: "USD",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["cost_of_revenue"],
+      derive: (values) => values.cost_of_revenue ?? null
+    },
+    {
+      metricCode: "operating_income_expenses",
+      label: "Operating Income/Expenses",
+      hierarchyPath: ["Operating Income/Expenses"],
+      unit: "USD",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["gross_profit", "operating_income"],
+      derive: (values) => {
+        const grossProfit = values.gross_profit;
+        const operatingIncome = values.operating_income;
+        if (grossProfit === null || operatingIncome === null) {
+          return null;
+        }
+
+        return operatingIncome - grossProfit;
+      }
+    },
+    {
+      metricCode: "selling_general_and_administrative_expenses",
+      label: "Selling, General and Administrative Expenses",
+      hierarchyPath: [
+        "Operating Income/Expenses",
+        "Selling, General and Administrative Expenses"
+      ],
+      unit: "USD",
+      concepts: ["SellingGeneralAndAdministrativeExpense"],
       statement: "income_statement",
       kind: "duration",
       quarterlyStrategy: "discrete_or_subtract",
-      ttmStrategy: "sum"
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "research_and_development_expenses",
+      label: "Research and Development Expenses",
+      hierarchyPath: [
+        "Operating Income/Expenses",
+        "Research and Development Expenses"
+      ],
+      unit: "USD",
+      concepts: [
+        "ResearchAndDevelopmentExpense",
+        "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost"
+      ],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "total_operating_profit_loss",
+      label: "Total Operating Profit/Loss",
+      hierarchyPath: ["Total Operating Profit/Loss"],
+      unit: "USD",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["operating_income"],
+      derive: (values) => values.operating_income ?? null
     },
     {
       metricCode: "operating_income",
       label: "Operating Income",
-      hierarchyPath: ["Profitability", "Operating Income"],
+      hierarchyPath: ["Total Operating Profit/Loss", "Operating Income"],
       unit: "USD",
       concepts: ["OperatingIncomeLoss"],
       statement: "income_statement",
@@ -90,9 +218,66 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       ttmStrategy: "sum"
     },
     {
+      metricCode: "non_operating_income_expense_total",
+      label: "Non-Operating Income/Expense, Total",
+      hierarchyPath: ["Non-Operating Income/Expense, Total"],
+      unit: "USD",
+      concepts: ["NonoperatingIncomeExpense", "OtherNonoperatingIncomeExpense"],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["pretax_income", "operating_income"],
+      derive: (values) => {
+        const pretaxIncome = values.pretax_income;
+        const operatingIncome = values.operating_income;
+        if (pretaxIncome === null || operatingIncome === null) {
+          return null;
+        }
+
+        return pretaxIncome - operatingIncome;
+      }
+    },
+    {
+      metricCode: "other_income_expense_non_operating",
+      label: "Other Income/Expense, Non-Operating",
+      hierarchyPath: [
+        "Non-Operating Income/Expense, Total",
+        "Other Income/Expense, Non-Operating"
+      ],
+      unit: "USD",
+      concepts: ["OtherNonoperatingIncomeExpense"],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "pretax_income",
+      label: "Pretax Income",
+      hierarchyPath: ["Pretax Income"],
+      unit: "USD",
+      concepts: ["IncomeBeforeTaxExpenseBenefit", "PretaxIncome"],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "provision_for_income_tax",
+      label: "Provision for Income Tax",
+      hierarchyPath: ["Provision for Income Tax"],
+      unit: "USD",
+      concepts: ["IncomeTaxExpenseBenefit"],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
       metricCode: "net_income",
-      label: "Net Income",
-      hierarchyPath: ["Profitability", "Net Income"],
+      label: "Net Income before Extraordinary Items and Discontinued Operations",
+      hierarchyPath: ["Net Income before Extraordinary Items and Discontinued Operations"],
       unit: "USD",
       concepts: ["NetIncomeLoss"],
       statement: "income_statement",
@@ -101,9 +286,68 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       ttmStrategy: "sum"
     },
     {
+      metricCode: "net_income_after_extraordinary",
+      label: "Net Income after Extraordinary Items and Discontinued Operations",
+      hierarchyPath: ["Net Income after Extraordinary Items and Discontinued Operations"],
+      unit: "USD",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["net_income"],
+      derive: (values) => values.net_income ?? null
+    },
+    {
+      metricCode: "net_income_after_non_controlling",
+      label: "Net Income after Non-Controlling/Minority Interests",
+      hierarchyPath: ["Net Income after Non-Controlling/Minority Interests"],
+      unit: "USD",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["net_income_after_extraordinary"],
+      derive: (values) => values.net_income_after_extraordinary ?? null
+    },
+    {
+      metricCode: "net_income_available_to_common_stockholders",
+      label: "Net Income Available to Common Stockholders",
+      hierarchyPath: ["Net Income Available to Common Stockholders"],
+      unit: "USD",
+      concepts: ["NetIncomeLossAvailableToCommonStockholdersBasic"],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["net_income_after_non_controlling"],
+      derive: (values) => values.net_income_after_non_controlling ?? null
+    },
+    {
+      metricCode: "diluted_net_income_available_to_common_stockholders",
+      label: "Diluted Net Income Available to Common Stockholders",
+      hierarchyPath: ["Diluted Net Income Available to Common Stockholders"],
+      unit: "USD",
+      concepts: ["NetIncomeLossAvailableToCommonStockholdersDiluted"],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["net_income_available_to_common_stockholders"],
+      derive: (values) => values.net_income_available_to_common_stockholders ?? null
+    },
+    {
+      metricCode: "basic_eps",
+      label: "Basic EPS",
+      hierarchyPath: ["Basic EPS"],
+      unit: "USD/shares",
+      concepts: ["EarningsPerShareBasic"],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_only",
+      ttmStrategy: "latest_annual"
+    },
+    {
       metricCode: "eps_diluted",
       label: "Diluted EPS",
-      hierarchyPath: ["Per Share", "Diluted EPS"],
+      hierarchyPath: ["Diluted EPS"],
       unit: "USD/shares",
       concepts: ["EarningsPerShareDiluted"],
       statement: "income_statement",
@@ -112,32 +356,83 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       ttmStrategy: "latest_annual"
     },
     {
+      metricCode: "shares_basic",
+      label: "Basic Weighted Average Shares Outstanding",
+      hierarchyPath: ["Basic Weighted Average Shares Outstanding"],
+      unit: "shares",
+      concepts: ["WeightedAverageNumberOfSharesOutstandingBasic"],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_only",
+      ttmStrategy: "latest_annual"
+    },
+    {
       metricCode: "shares_diluted",
-      label: "Weighted Avg. Diluted Shares",
-      hierarchyPath: ["Per Share", "Weighted Avg. Diluted Shares"],
+      label: "Diluted Weighted Average Shares Outstanding",
+      hierarchyPath: ["Diluted Weighted Average Shares Outstanding"],
       unit: "shares",
       concepts: ["WeightedAverageNumberOfDilutedSharesOutstanding"],
       statement: "income_statement",
       kind: "duration",
       quarterlyStrategy: "discrete_only",
       ttmStrategy: "latest_annual"
+    },
+    {
+      metricCode: "total_dividend_per_share",
+      label: "Total Dividend Per Share",
+      hierarchyPath: ["Total Dividend Per Share"],
+      unit: "USD/shares",
+      concepts: [
+        "CommonStockDividendsPerShareDeclared",
+        "CommonStockDividendsPerShareCashPaid"
+      ],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_only",
+      ttmStrategy: "latest_annual"
+    },
+    {
+      metricCode: "regular_dividend_per_share_calc",
+      label: "Regular Dividend Per Share Calc",
+      hierarchyPath: ["Total Dividend Per Share", "Regular Dividend Per Share Calc"],
+      unit: "USD/shares",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "latest_annual",
+      deriveDependencies: ["total_dividend_per_share"],
+      derive: (values) => values.total_dividend_per_share ?? null
+    },
+    {
+      metricCode: "basic_waso",
+      label: "Basic WASO",
+      hierarchyPath: ["Basic WASO"],
+      unit: "shares",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "latest_annual",
+      deriveDependencies: ["shares_basic"],
+      derive: (values) => values.shares_basic ?? null
+    },
+    {
+      metricCode: "diluted_waso",
+      label: "Diluted WASO",
+      hierarchyPath: ["Diluted WASO"],
+      unit: "shares",
+      concepts: [],
+      statement: "income_statement",
+      kind: "derived",
+      ttmStrategy: "latest_annual",
+      deriveDependencies: ["shares_diluted"],
+      derive: (values) => values.shares_diluted ?? null
     }
   ],
   balance_sheet: [
     {
-      metricCode: "cash_and_equivalents",
-      label: "Cash and Equivalents",
-      hierarchyPath: ["Liquidity", "Cash and Equivalents"],
-      unit: "USD",
-      concepts: ["CashAndCashEquivalentsAtCarryingValue", "CashAndDueFromBanks"],
-      statement: "balance_sheet",
-      kind: "instant",
-      ttmStrategy: "none"
-    },
-    {
       metricCode: "total_assets",
       label: "Total Assets",
-      hierarchyPath: ["Resources", "Total Assets"],
+      hierarchyPath: ["Total Assets"],
       unit: "USD",
       concepts: ["Assets"],
       statement: "balance_sheet",
@@ -145,9 +440,321 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       ttmStrategy: "none"
     },
     {
+      metricCode: "total_current_assets",
+      label: "Total Current Assets",
+      hierarchyPath: ["Total Assets", "Total Current Assets"],
+      unit: "USD",
+      concepts: ["AssetsCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "cash_cash_equivalents_and_short_term_investments",
+      label: "Cash, Cash Equivalents and Short Term Investments",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Cash, Cash Equivalents and Short Term Investments"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "balance_sheet",
+      kind: "derived",
+      ttmStrategy: "none",
+      deriveDependencies: ["cash_and_equivalents", "short_term_investments"],
+      derive: (values) => {
+        const cash = values.cash_and_equivalents;
+        const investments = values.short_term_investments;
+        if (cash === null && investments === null) {
+          return null;
+        }
+
+        return (cash ?? 0) + (investments ?? 0);
+      }
+    },
+    {
+      metricCode: "cash_and_equivalents",
+      label: "Cash and Cash Equivalents",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Cash, Cash Equivalents and Short Term Investments",
+        "Cash and Cash Equivalents"
+      ],
+      unit: "USD",
+      concepts: ["CashAndCashEquivalentsAtCarryingValue"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "cash",
+      label: "Cash",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Cash, Cash Equivalents and Short Term Investments",
+        "Cash and Cash Equivalents",
+        "Cash"
+      ],
+      unit: "USD",
+      concepts: ["Cash"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "cash_equivalents",
+      label: "Cash Equivalents",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Cash, Cash Equivalents and Short Term Investments",
+        "Cash and Cash Equivalents",
+        "Cash Equivalents"
+      ],
+      unit: "USD",
+      concepts: ["CashEquivalentsAtCarryingValue"],
+      statement: "balance_sheet",
+      kind: "derived",
+      ttmStrategy: "none",
+      deriveDependencies: ["cash_and_equivalents", "cash"],
+      derive: (values) => {
+        const cashAndEquivalents = values.cash_and_equivalents;
+        const cash = values.cash;
+        if (cashAndEquivalents === null || cash === null) {
+          return null;
+        }
+
+        return cashAndEquivalents - cash;
+      }
+    },
+    {
+      metricCode: "short_term_investments",
+      label: "Short Term Investments",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Cash, Cash Equivalents and Short Term Investments",
+        "Short Term Investments"
+      ],
+      unit: "USD",
+      concepts: ["AvailableForSaleSecuritiesCurrent", "ShortTermInvestments", "MarketableSecuritiesCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "other_short_term_investments",
+      label: "Other Short Term Investments",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Cash, Cash Equivalents and Short Term Investments",
+        "Short Term Investments",
+        "Other Short Term Investments"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "balance_sheet",
+      kind: "derived",
+      ttmStrategy: "none",
+      deriveDependencies: ["short_term_investments"],
+      derive: (values) => values.short_term_investments ?? null
+    },
+    {
+      metricCode: "inventories",
+      label: "Inventories",
+      hierarchyPath: ["Total Assets", "Total Current Assets", "Inventories"],
+      unit: "USD",
+      concepts: ["InventoryNet"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "trade_and_other_receivables_current",
+      label: "Trade and Other Receivables, Current",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Trade and Other Receivables, Current"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "balance_sheet",
+      kind: "derived",
+      ttmStrategy: "none",
+      deriveDependencies: ["trade_accounts_receivable_current", "other_receivables_current"],
+      derive: (values) => {
+        const trade = values.trade_accounts_receivable_current;
+        const other = values.other_receivables_current;
+        if (trade === null && other === null) {
+          return null;
+        }
+
+        return (trade ?? 0) + (other ?? 0);
+      }
+    },
+    {
+      metricCode: "trade_accounts_receivable_current",
+      label: "Trade/Accounts Receivable, Current",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Trade and Other Receivables, Current",
+        "Trade/Accounts Receivable, Current"
+      ],
+      unit: "USD",
+      concepts: ["AccountsReceivableNetCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "gross_trade_accounts_receivable_current",
+      label: "Gross Trade/Accounts Receivable, Current",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Trade and Other Receivables, Current",
+        "Trade/Accounts Receivable, Current",
+        "Gross Trade/Accounts Receivable, Current"
+      ],
+      unit: "USD",
+      concepts: ["AccountsReceivableGrossCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "allowance_adjustments_trade_accounts_receivable_current",
+      label: "Allowance/Adjustments for Trade/Accounts Receivable, Current",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Trade and Other Receivables, Current",
+        "Trade/Accounts Receivable, Current",
+        "Allowance/Adjustments for Trade/Accounts Receivable, Current"
+      ],
+      unit: "USD",
+      concepts: ["AllowanceForDoubtfulAccountsReceivableCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "other_receivables_current",
+      label: "Other Receivables, Current",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Current Assets",
+        "Trade and Other Receivables, Current",
+        "Other Receivables, Current"
+      ],
+      unit: "USD",
+      concepts: ["OtherReceivablesCurrent", "VendorNonTradeReceivablesCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "other_current_assets",
+      label: "Other Current Assets",
+      hierarchyPath: ["Total Assets", "Total Current Assets", "Other Current Assets"],
+      unit: "USD",
+      concepts: ["OtherAssetsCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "total_non_current_assets",
+      label: "Total Non-Current Assets",
+      hierarchyPath: ["Total Assets", "Total Non-Current Assets"],
+      unit: "USD",
+      concepts: ["AssetsNoncurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "net_property_plant_equipment",
+      label: "Net Property, Plant and Equipment",
+      hierarchyPath: ["Total Assets", "Total Non-Current Assets", "Net Property, Plant and Equipment"],
+      unit: "USD",
+      concepts: ["PropertyPlantAndEquipmentNet"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "gross_property_plant_equipment",
+      label: "Gross Property, Plant and Equipment",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Non-Current Assets",
+        "Net Property, Plant and Equipment",
+        "Gross Property, Plant and Equipment"
+      ],
+      unit: "USD",
+      concepts: ["PropertyPlantAndEquipmentGross"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "accumulated_depreciation_impairment",
+      label: "Accumulated Depreciation and Impairment",
+      hierarchyPath: [
+        "Total Assets",
+        "Total Non-Current Assets",
+        "Net Property, Plant and Equipment",
+        "Accumulated Depreciation and Impairment"
+      ],
+      unit: "USD",
+      concepts: ["AccumulatedDepreciationDepletionAndAmortizationPropertyPlantAndEquipment"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "total_long_term_investments",
+      label: "Total Long Term Investments",
+      hierarchyPath: ["Total Assets", "Total Non-Current Assets", "Total Long Term Investments"],
+      unit: "USD",
+      concepts: ["NoncurrentInvestments", "AvailableForSaleSecuritiesNoncurrent", "LongTermInvestments"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "deferred_tax_assets_non_current",
+      label: "Deferred Tax Assets, Non-Current",
+      hierarchyPath: ["Total Assets", "Total Non-Current Assets", "Deferred Tax Assets, Non-Current"],
+      unit: "USD",
+      concepts: ["DeferredTaxAssetsNetNoncurrent", "DeferredTaxAssetsNoncurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "other_non_current_assets",
+      label: "Other Non-Current Assets",
+      hierarchyPath: ["Total Assets", "Total Non-Current Assets", "Other Non-Current Assets"],
+      unit: "USD",
+      concepts: ["OtherAssetsNoncurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
       metricCode: "total_liabilities",
       label: "Total Liabilities",
-      hierarchyPath: ["Claims", "Total Liabilities"],
+      hierarchyPath: ["Total Liabilities"],
       unit: "USD",
       concepts: ["Liabilities"],
       statement: "balance_sheet",
@@ -155,11 +762,107 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       ttmStrategy: "none"
     },
     {
-      metricCode: "shareholders_equity",
-      label: "Shareholders' Equity",
-      hierarchyPath: ["Claims", "Shareholders' Equity"],
+      metricCode: "total_current_liabilities",
+      label: "Total Current Liabilities",
+      hierarchyPath: ["Total Liabilities", "Total Current Liabilities"],
+      unit: "USD",
+      concepts: ["LiabilitiesCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "trade_accounts_payable_current",
+      label: "Trade/Accounts Payable, Current",
+      hierarchyPath: [
+        "Total Liabilities",
+        "Total Current Liabilities",
+        "Payables and Accrued Expenses, Current",
+        "Trade and Other Payables, Current",
+        "Trade/Accounts Payable, Current"
+      ],
+      unit: "USD",
+      concepts: ["AccountsPayableCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "other_current_liabilities",
+      label: "Other Current Liabilities",
+      hierarchyPath: ["Total Liabilities", "Total Current Liabilities", "Other Current Liabilities"],
+      unit: "USD",
+      concepts: ["OtherLiabilitiesCurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "total_non_current_liabilities",
+      label: "Total Non-Current Liabilities",
+      hierarchyPath: ["Total Liabilities", "Total Non-Current Liabilities"],
+      unit: "USD",
+      concepts: ["LiabilitiesNoncurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "long_term_debt",
+      label: "Long Term Debt",
+      hierarchyPath: [
+        "Total Liabilities",
+        "Total Non-Current Liabilities",
+        "Financial Liabilities, Non-Current",
+        "Long Term Debt and Capital Lease Obligation",
+        "Long Term Debt"
+      ],
+      unit: "USD",
+      concepts: ["LongTermDebtNoncurrent"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "total_equity",
+      label: "Total Equity",
+      hierarchyPath: ["Total Equity"],
       unit: "USD",
       concepts: ["StockholdersEquity"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "paid_in_capital",
+      label: "Paid in Capital",
+      hierarchyPath: ["Total Equity", "Equity Attributable to Parent Stockholders", "Paid in Capital"],
+      unit: "USD",
+      concepts: ["CommonStocksIncludingAdditionalPaidInCapital", "AdditionalPaidInCapital", "CommonStockValue"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "retained_earnings_accumulated_deficit",
+      label: "Retained Earnings/Accumulated Deficit",
+      hierarchyPath: ["Total Equity", "Equity Attributable to Parent Stockholders", "Retained Earnings/Accumulated Deficit"],
+      unit: "USD",
+      concepts: ["RetainedEarningsAccumulatedDeficit"],
+      statement: "balance_sheet",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "reserves_accumulated_comprehensive_income_losses",
+      label: "Reserves/Accumulated Comprehensive Income/Losses",
+      hierarchyPath: [
+        "Total Equity",
+        "Equity Attributable to Parent Stockholders",
+        "Reserves/Accumulated Comprehensive Income/Losses"
+      ],
+      unit: "USD",
+      concepts: ["AccumulatedOtherComprehensiveIncomeLossNetOfTax"],
       statement: "balance_sheet",
       kind: "instant",
       ttmStrategy: "none"
@@ -167,9 +870,9 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
   ],
   cash_flow: [
     {
-      metricCode: "operating_cash_flow",
-      label: "Operating Cash Flow",
-      hierarchyPath: ["Operations", "Operating Cash Flow"],
+      metricCode: "cash_flow_operating_indirect",
+      label: "Cash Flow from Operating Activities, Indirect",
+      hierarchyPath: ["Cash Flow from Operating Activities, Indirect"],
       unit: "USD",
       concepts: ["NetCashProvidedByUsedInOperatingActivities"],
       statement: "cash_flow",
@@ -178,34 +881,723 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       ttmStrategy: "sum"
     },
     {
-      metricCode: "capital_expenditures",
-      label: "Capital Expenditures",
-      hierarchyPath: ["Investing", "Capital Expenditures"],
+      metricCode: "net_cash_flow_from_continuing_operating_activities_indirect",
+      label: "Net Cash Flow from Continuing Operating Activities, Indirect",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect"
+      ],
       unit: "USD",
-      concepts: ["PaymentsToAcquirePropertyPlantAndEquipment"],
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["cash_flow_operating_indirect"],
+      derive: (values) => values.cash_flow_operating_indirect ?? null
+    },
+    {
+      metricCode: "cash_generated_from_operating_activities",
+      label: "Cash Generated from Operating Activities",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["cash_flow_operating_indirect"],
+      derive: (values) => values.cash_flow_operating_indirect ?? null
+    },
+    {
+      metricCode: "income_loss_before_non_cash_adjustment",
+      label: "Income/Loss before Non-Cash Adjustment",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Income/Loss before Non-Cash Adjustment"
+      ],
+      unit: "USD",
+      concepts: ["NetIncomeLoss"],
       statement: "cash_flow",
       kind: "duration",
       quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum"
     },
     {
-      metricCode: "free_cash_flow",
-      label: "Free Cash Flow",
-      hierarchyPath: ["Returns", "Free Cash Flow"],
+      metricCode: "total_adjustments_for_non_cash_items",
+      label: "Total Adjustments for Non-Cash Items",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Total Adjustments for Non-Cash Items"
+      ],
       unit: "USD",
       concepts: [],
       statement: "cash_flow",
       kind: "derived",
       ttmStrategy: "sum",
-      deriveDependencies: ["operating_cash_flow", "capital_expenditures"],
+      deriveDependencies: [
+        "cash_generated_from_operating_activities",
+        "income_loss_before_non_cash_adjustment",
+        "changes_in_operating_capital"
+      ],
       derive: (values) => {
-        const operatingCashFlow = values.operating_cash_flow;
-        const capex = values.capital_expenditures;
-        if (operatingCashFlow === null || capex === null) {
+        const generated = values.cash_generated_from_operating_activities;
+        const income = values.income_loss_before_non_cash_adjustment;
+        const changes = values.changes_in_operating_capital;
+        if (generated === null || income === null || changes === null) {
           return null;
         }
 
-        return operatingCashFlow - Math.abs(capex);
+        return generated - income - changes;
+      }
+    },
+    {
+      metricCode: "depreciation_and_amortization_non_cash_adjustment",
+      label: "Depreciation and Amortization, Non-Cash Adjustment",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Total Adjustments for Non-Cash Items",
+        "Depreciation, Amortization and Depletion, Non-Cash Adjustment",
+        "Depreciation and Amortization, Non-Cash Adjustment"
+      ],
+      unit: "USD",
+      concepts: ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "stock_based_compensation_non_cash_adjustment",
+      label: "Stock-Based Compensation, Non-Cash Adjustment",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Total Adjustments for Non-Cash Items",
+        "Stock-Based Compensation, Non-Cash Adjustment"
+      ],
+      unit: "USD",
+      concepts: ["ShareBasedCompensation"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "other_non_cash_items",
+      label: "Other Non-Cash Items",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Total Adjustments for Non-Cash Items",
+        "Other Non-Cash Items"
+      ],
+      unit: "USD",
+      concepts: ["OtherNoncashIncomeExpense"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "change_in_inventories",
+      label: "Change in Inventories",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Inventories"
+      ],
+      unit: "USD",
+      concepts: ["IncreaseDecreaseInInventories"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "changes_in_operating_capital",
+      label: "Changes in Operating Capital",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: [
+        "change_in_inventories",
+        "change_in_trade_and_other_receivables",
+        "change_in_other_current_assets",
+        "change_in_payables_and_accrued_expenses",
+        "change_in_other_current_liabilities"
+      ],
+      derive: (values) => {
+        const parts = [
+          values.change_in_inventories,
+          values.change_in_trade_and_other_receivables,
+          values.change_in_other_current_assets,
+          values.change_in_payables_and_accrued_expenses,
+          values.change_in_other_current_liabilities
+        ];
+        if (parts.every((part) => part === null)) {
+          return null;
+        }
+
+        return parts.reduce<number>((total, part) => total + (part ?? 0), 0);
+      }
+    },
+    {
+      metricCode: "change_in_trade_and_other_receivables",
+      label: "Change in Trade and Other Receivables",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Trade and Other Receivables"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["change_in_trade_accounts_receivable"],
+      derive: (values) => values.change_in_trade_accounts_receivable ?? null
+    },
+    {
+      metricCode: "change_in_trade_accounts_receivable",
+      label: "Change in Trade/Accounts Receivable",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Trade and Other Receivables",
+        "Change in Trade/Accounts Receivable"
+      ],
+      unit: "USD",
+      concepts: ["IncreaseDecreaseInAccountsReceivable"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "change_in_other_current_assets",
+      label: "Change in Other Current Assets",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Other Current Assets"
+      ],
+      unit: "USD",
+      concepts: ["IncreaseDecreaseInOtherOperatingAssets"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "change_in_trade_accounts_payable",
+      label: "Change in Trade/Accounts Payable",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Payables and Accrued Expenses",
+        "Change in Trade and Other Payables",
+        "Change in Trade/Accounts Payable"
+      ],
+      unit: "USD",
+      concepts: ["IncreaseDecreaseInAccountsPayable"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "change_in_payables_and_accrued_expenses",
+      label: "Change in Payables and Accrued Expenses",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Payables and Accrued Expenses"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["change_in_trade_and_other_payables"],
+      derive: (values) => values.change_in_trade_and_other_payables ?? null
+    },
+    {
+      metricCode: "change_in_trade_and_other_payables",
+      label: "Change in Trade and Other Payables",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Payables and Accrued Expenses",
+        "Change in Trade and Other Payables"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["change_in_trade_accounts_payable"],
+      derive: (values) => values.change_in_trade_accounts_payable ?? null
+    },
+    {
+      metricCode: "change_in_other_current_liabilities",
+      label: "Change in Other Current Liabilities",
+      hierarchyPath: [
+        "Cash Flow from Operating Activities, Indirect",
+        "Net Cash Flow from Continuing Operating Activities, Indirect",
+        "Cash Generated from Operating Activities",
+        "Changes in Operating Capital",
+        "Change in Other Current Liabilities"
+      ],
+      unit: "USD",
+      concepts: ["IncreaseDecreaseInOtherOperatingLiabilities"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "cash_flow_investing_activities",
+      label: "Cash Flow from Investing Activities",
+      hierarchyPath: ["Cash Flow from Investing Activities"],
+      unit: "USD",
+      concepts: ["NetCashProvidedByUsedInInvestingActivities"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "cash_flow_continuing_investing_activities",
+      label: "Cash Flow from Continuing Investing Activities",
+      hierarchyPath: [
+        "Cash Flow from Investing Activities",
+        "Cash Flow from Continuing Investing Activities"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["cash_flow_investing_activities"],
+      derive: (values) => values.cash_flow_investing_activities ?? null
+    },
+    {
+      metricCode: "purchase_sale_ppe_net",
+      label: "Purchase/Sale and Disposal of Property, Plant and Equipment, Net",
+      hierarchyPath: [
+        "Cash Flow from Investing Activities",
+        "Cash Flow from Continuing Investing Activities",
+        "Purchase/Sale and Disposal of Property, Plant and Equipment, Net"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["purchase_property_plant_equipment"],
+      derive: (values) => values.purchase_property_plant_equipment ?? null
+    },
+    {
+      metricCode: "purchase_property_plant_equipment",
+      label: "Purchase of Property, Plant and Equipment",
+      hierarchyPath: [
+        "Cash Flow from Investing Activities",
+        "Cash Flow from Continuing Investing Activities",
+        "Purchase/Sale and Disposal of Property, Plant and Equipment, Net",
+        "Purchase of Property, Plant and Equipment"
+      ],
+      unit: "USD",
+      concepts: ["PaymentsToAcquirePropertyPlantAndEquipment"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "purchase_sale_investments_net",
+      label: "Purchase/Sale of Investments, Net",
+      hierarchyPath: [
+        "Cash Flow from Investing Activities",
+        "Cash Flow from Continuing Investing Activities",
+        "Purchase/Sale of Investments, Net"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["purchase_of_investments", "sale_of_investments"],
+      derive: (values) => {
+        const purchase = values.purchase_of_investments;
+        const sale = values.sale_of_investments;
+        if (purchase === null && sale === null) {
+          return null;
+        }
+
+        return (purchase ?? 0) + (sale ?? 0);
+      }
+    },
+    {
+      metricCode: "purchase_of_investments",
+      label: "Purchase of Investments",
+      hierarchyPath: [
+        "Cash Flow from Investing Activities",
+        "Cash Flow from Continuing Investing Activities",
+        "Purchase/Sale of Investments, Net",
+        "Purchase of Investments"
+      ],
+      unit: "USD",
+      concepts: ["PaymentsToAcquireAvailableForSaleSecuritiesDebt", "PaymentsToAcquireInvestments"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "sale_of_investments",
+      label: "Sale of Investments",
+      hierarchyPath: [
+        "Cash Flow from Investing Activities",
+        "Cash Flow from Continuing Investing Activities",
+        "Purchase/Sale of Investments, Net",
+        "Sale of Investments"
+      ],
+      unit: "USD",
+      concepts: [
+        "ProceedsFromSaleOfAvailableForSaleSecuritiesDebt",
+        "ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities",
+        "ProceedsFromSaleAndMaturityOfOtherInvestments"
+      ],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "cash_flow_financing_activities",
+      label: "Cash Flow from Financing Activities",
+      hierarchyPath: ["Cash Flow from Financing Activities"],
+      unit: "USD",
+      concepts: ["NetCashProvidedByUsedInFinancingActivities"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "cash_flow_continuing_financing_activities",
+      label: "Cash Flow from Continuing Financing Activities",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["cash_flow_financing_activities"],
+      derive: (values) => values.cash_flow_financing_activities ?? null
+    },
+    {
+      metricCode: "issuance_payments_common_stock_net",
+      label: "Issuance of/Payments for Common Stock, Net",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Issuance of/Payments for Common Stock, Net"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["payments_for_common_stock", "proceeds_from_issuance_of_common_stock"],
+      derive: (values) => {
+        const payments = values.payments_for_common_stock;
+        const proceeds = values.proceeds_from_issuance_of_common_stock;
+        if (payments === null && proceeds === null) {
+          return null;
+        }
+
+        return (payments ?? 0) + (proceeds ?? 0);
+      }
+    },
+    {
+      metricCode: "payments_for_common_stock",
+      label: "Payments for Common Stock",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Issuance of/Payments for Common Stock, Net",
+        "Payments for Common Stock"
+      ],
+      unit: "USD",
+      concepts: ["PaymentsForRepurchaseOfCommonStock"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "proceeds_from_issuance_of_common_stock",
+      label: "Proceeds from Issuance of Common Stock",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Issuance of/Payments for Common Stock, Net",
+        "Proceeds from Issuance of Common Stock"
+      ],
+      unit: "USD",
+      concepts: ["ProceedsFromStockOptionsExercised", "ProceedsFromIssuanceOfCommonStock"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "proceeds_from_issuance_of_long_term_debt",
+      label: "Proceeds from Issuance of Long Term Debt",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Issuance of/Repayments for Debt, Net",
+        "Issuance of/Repayments for Long Term Debt, Net",
+        "Proceeds from Issuance of Long Term Debt"
+      ],
+      unit: "USD",
+      concepts: ["ProceedsFromIssuanceOfLongTermDebt"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "issuance_repayments_debt_net",
+      label: "Issuance of/Repayments for Debt, Net",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Issuance of/Repayments for Debt, Net"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["proceeds_from_issuance_of_long_term_debt", "repayments_for_long_term_debt"],
+      derive: (values) => {
+        const proceeds = values.proceeds_from_issuance_of_long_term_debt;
+        const repayments = values.repayments_for_long_term_debt;
+        if (proceeds === null && repayments === null) {
+          return null;
+        }
+
+        return (proceeds ?? 0) + (repayments ?? 0);
+      }
+    },
+    {
+      metricCode: "repayments_for_long_term_debt",
+      label: "Repayments for Long Term Debt",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Issuance of/Repayments for Debt, Net",
+        "Issuance of/Repayments for Long Term Debt, Net",
+        "Repayments for Long Term Debt"
+      ],
+      unit: "USD",
+      concepts: ["RepaymentsOfLongTermDebt"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "cash_dividends_paid",
+      label: "Cash Dividends Paid",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Cash Dividends and Interest Paid",
+        "Cash Dividends Paid"
+      ],
+      unit: "USD",
+      concepts: ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "cash_dividends_and_interest_paid",
+      label: "Cash Dividends and Interest Paid",
+      hierarchyPath: [
+        "Cash Flow from Financing Activities",
+        "Cash Flow from Continuing Financing Activities",
+        "Cash Dividends and Interest Paid"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["cash_dividends_paid"],
+      derive: (values) => values.cash_dividends_paid ?? null
+    },
+    {
+      metricCode: "cash_and_cash_equivalents_end_of_period",
+      label: "Cash and Cash Equivalents, End of Period",
+      hierarchyPath: ["Cash and Cash Equivalents, End of Period"],
+      unit: "USD",
+      concepts: ["CashAndCashEquivalentsAtCarryingValue"],
+      statement: "cash_flow",
+      kind: "instant",
+      ttmStrategy: "none"
+    },
+    {
+      metricCode: "change_in_cash",
+      label: "Change in Cash",
+      hierarchyPath: [
+        "Cash and Cash Equivalents, End of Period",
+        "Change in Cash"
+      ],
+      unit: "USD",
+      concepts: ["CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecrease"],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: [
+        "cash_flow_operating_indirect",
+        "cash_flow_investing_activities",
+        "cash_flow_financing_activities"
+      ],
+      derive: (values) => {
+        const operating = values.cash_flow_operating_indirect;
+        const investing = values.cash_flow_investing_activities;
+        const financing = values.cash_flow_financing_activities;
+        if (operating === null || financing === null || investing === null) {
+          return null;
+        }
+
+        return operating + financing + investing;
+      }
+    },
+    {
+      metricCode: "cash_flow_supplemental_section",
+      label: "Cash Flow Supplemental Section",
+      hierarchyPath: ["Cash Flow Supplemental Section"],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum"
+    },
+    {
+      metricCode: "income_tax_paid_supplemental",
+      label: "Income Tax Paid, Supplemental",
+      hierarchyPath: [
+        "Cash Flow Supplemental Section",
+        "Income Tax Paid, Supplemental"
+      ],
+      unit: "USD",
+      concepts: ["IncomeTaxesPaidNet"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "interest_paid_supplemental",
+      label: "Interest Paid, Supplemental",
+      hierarchyPath: [
+        "Cash Flow Supplemental Section",
+        "Interest Paid, Supplemental"
+      ],
+      unit: "USD",
+      concepts: ["InterestPaidNet"],
+      statement: "cash_flow",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "change_in_cash_as_reported_supplemental",
+      label: "Change in Cash as Reported, Supplemental",
+      hierarchyPath: [
+        "Cash Flow Supplemental Section",
+        "Change in Cash as Reported, Supplemental"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["change_in_cash"],
+      derive: (values) => values.change_in_cash ?? null
+    },
+    {
+      metricCode: "cash_and_cash_equivalents_beginning_of_period",
+      label: "Cash and Cash Equivalents, Beginning of Period",
+      hierarchyPath: [
+        "Cash and Cash Equivalents, End of Period",
+        "Cash and Cash Equivalents, Beginning of Period"
+      ],
+      unit: "USD",
+      concepts: [],
+      statement: "cash_flow",
+      kind: "derived",
+      ttmStrategy: "sum",
+      deriveDependencies: ["cash_and_cash_equivalents_end_of_period", "change_in_cash"],
+      derive: (values) => {
+        const ending = values.cash_and_cash_equivalents_end_of_period;
+        const change = values.change_in_cash;
+        if (ending === null || change === null) {
+          return null;
+        }
+
+        return ending - change;
       }
     }
   ]
@@ -723,17 +2115,26 @@ function buildMetricSeries(
 } {
   const sourcedFacts = collectSourcedFacts(companyFacts, definition);
   const baseFacts = selectAnnualSourcedFacts(sourcedFacts, definition.kind);
-  const annualCells = buildAnnualSeries(baseFacts, periods, view);
+  const annualCells = applyValueTransform(
+    buildAnnualSeries(baseFacts, periods, view),
+    definition.valueTransform
+  );
 
   let quarterlyCells: PeriodCell[] = [];
   if (definition.kind === "instant") {
-    quarterlyCells = buildInstantQuarterlySeries(sourcedFacts, periods + 4, view);
+    quarterlyCells = applyValueTransform(
+      buildInstantQuarterlySeries(sourcedFacts, periods + 4, view),
+      definition.valueTransform
+    );
   } else if (definition.kind === "duration") {
-    quarterlyCells = buildDurationQuarterlySeries(
-      definition as StatementMetricDefinition & { kind: "duration" },
-      sourcedFacts,
-      periods + 4,
-      view
+    quarterlyCells = applyValueTransform(
+      buildDurationQuarterlySeries(
+        definition as StatementMetricDefinition & { kind: "duration" },
+        sourcedFacts,
+        periods + 4,
+        view
+      ),
+      definition.valueTransform
     );
   }
 
@@ -767,6 +2168,17 @@ function buildDisplayRows(
         continue;
       }
 
+      if (
+        rows.some((row) =>
+          row.label === (sectionParts[index] ?? sectionKey) &&
+          row.depth === index &&
+          row.rowKind === "metric"
+        )
+      ) {
+        seenSections.add(sectionKey);
+        continue;
+      }
+
       seenSections.add(sectionKey);
       rows.push({
         metricCode: `section_${sectionKey.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
@@ -779,7 +2191,7 @@ function buildDisplayRows(
       });
     }
 
-    rows.push({
+    const metricRow = {
       metricCode: definition.metricCode,
       label: definition.label,
       depth: definition.hierarchyPath.length - 1,
@@ -791,7 +2203,21 @@ function buildDisplayRows(
       )
         ? ["missing_metric"]
         : []
-    });
+    } satisfies StatementRow;
+
+    const existingSectionIndex = rows.findIndex(
+      (row) =>
+        row.label === metricRow.label &&
+        row.depth === metricRow.depth &&
+        row.rowKind === "section"
+    );
+
+    if (existingSectionIndex >= 0) {
+      rows[existingSectionIndex] = metricRow;
+      continue;
+    }
+
+    rows.push(metricRow);
   }
 
   return rows;
@@ -924,19 +2350,37 @@ export function mapStatement(input: {
     currency = metricCurrency;
   }
 
-  for (const definition of definitions.filter((item) => item.kind === "derived")) {
-    metricValues[definition.metricCode] = Object.fromEntries(
-      outputColumns.map((column) => {
-        const inputs = Object.fromEntries(
-          (definition.deriveDependencies ?? []).map((dependency) => [
-            dependency,
-            metricValues[dependency]?.[column] ?? null
-          ])
-        );
-        return [column, definition.derive?.(inputs) ?? null];
-      })
-    );
+  const derivedDefinitions = definitions.filter((item) => item.kind === "derived");
+  for (let pass = 0; pass < derivedDefinitions.length; pass += 1) {
+    let changed = false;
 
+    for (const definition of derivedDefinitions) {
+      const nextValues = Object.fromEntries(
+        outputColumns.map((column) => {
+          const inputs = Object.fromEntries(
+            (definition.deriveDependencies ?? []).map((dependency) => [
+              dependency,
+              metricValues[dependency]?.[column] ?? null
+            ])
+          );
+          return [column, definition.derive?.(inputs) ?? null];
+        })
+      );
+
+      const previousValues = metricValues[definition.metricCode];
+      metricValues[definition.metricCode] = nextValues;
+
+      if (JSON.stringify(previousValues) !== JSON.stringify(nextValues)) {
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      break;
+    }
+  }
+
+  for (const definition of derivedDefinitions) {
     for (const column of outputColumns) {
       const value = metricValues[definition.metricCode]?.[column] ?? null;
       if (value === null) {

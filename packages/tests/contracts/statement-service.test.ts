@@ -188,7 +188,8 @@ describe("statement service", () => {
 
     const matrix = formatMatrixStatement(statement);
     expect(matrix.columns).toEqual(["2024", "2025", "TTM"]);
-    expect(matrix.rows[0]?.row_kind).toBe("section");
+    expect(matrix.rows[0]?.row_kind).toBe("metric");
+    expect(matrix.rows[0]?.label).toBe("Gross Profit");
     expect(matrix.rows.find((row) => row.metric_code === "revenue_total")?.values).toEqual([
       500,
       540,
@@ -213,7 +214,7 @@ describe("statement service", () => {
     const lines = csv.trimEnd().split("\n");
 
     expect(lines[0]).toBe("SYN_income-statement_Annual_Restated,2024,2025,TTM");
-    expect(lines[1]).toBe("Revenue,,,");
+    expect(lines[1]).toBe("Gross Profit,210,220,220");
     expect(lines[2]).toBe("    Total Revenue,500,540,540");
     expect(lines.at(-1)).toBe("Fiscal year ends in Sep 30 | USD,,,");
   });
@@ -270,7 +271,7 @@ describe("statement service", () => {
 
     const debug = formatNormalizedStatement(statement, { debug: true });
     expect(debug.debug?.facts).toHaveLength(statement.facts.length);
-    expect(debug.debug?.facts[0]?.metricCode).toBe("revenue_total");
+    expect(debug.debug?.facts[0]?.metricCode).toBe("gross_profit");
   });
 
   it("builds quarterly statements with TTM and section rows", () => {
@@ -287,8 +288,8 @@ describe("statement service", () => {
 
     expect(statement.columns).toEqual(["2024-Q4", "2025-Q1", "2025-Q2", "2025-Q3", "TTM"]);
     expect(statement.rows[0]).toMatchObject({
-      label: "Revenue",
-      rowKind: "section",
+      label: "Gross Profit",
+      rowKind: "metric",
       depth: 0
     });
     expect(statement.periods.TTM.revenue_total).toBe(540);
