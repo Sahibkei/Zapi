@@ -48,7 +48,7 @@ function isDurationStatement(statement: StatementType): boolean {
   return statement === "income_statement" || statement === "cash_flow";
 }
 
-const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> = {
+const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> = {
   income_statement: [
     {
       metricCode: "revenue_total",
@@ -128,7 +128,7 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       label: "Cash and Equivalents",
       hierarchyPath: ["Liquidity", "Cash and Equivalents"],
       unit: "USD",
-      concepts: ["CashAndCashEquivalentsAtCarryingValue"],
+      concepts: ["CashAndCashEquivalentsAtCarryingValue", "CashAndDueFromBanks"],
       statement: "balance_sheet",
       kind: "instant",
       ttmStrategy: "none"
@@ -209,6 +209,95 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
     }
   ]
 };
+
+const BANK_INCOME_STATEMENT_DEFINITIONS: StatementMetricDefinition[] = [
+  {
+    metricCode: "interest_income_net",
+    label: "Net Interest Income",
+    hierarchyPath: ["Revenue", "Net Interest Income"],
+    unit: "USD",
+    concepts: ["InterestIncomeExpenseNet"],
+    statement: "income_statement",
+    kind: "duration",
+    quarterlyStrategy: "discrete_or_subtract",
+    ttmStrategy: "sum"
+  },
+  {
+    metricCode: "noninterest_income",
+    label: "Noninterest Income",
+    hierarchyPath: ["Revenue", "Noninterest Income"],
+    unit: "USD",
+    concepts: ["NoninterestIncome"],
+    statement: "income_statement",
+    kind: "duration",
+    quarterlyStrategy: "discrete_or_subtract",
+    ttmStrategy: "sum"
+  },
+  {
+    metricCode: "revenue_total",
+    label: "Total Revenue",
+    hierarchyPath: ["Revenue", "Total Revenue"],
+    unit: "USD",
+    concepts: [],
+    statement: "income_statement",
+    kind: "derived",
+    ttmStrategy: "sum",
+    deriveDependencies: ["interest_income_net", "noninterest_income"],
+    derive: (values) => {
+      const interestIncomeNet = values.interest_income_net;
+      const noninterestIncome = values.noninterest_income;
+      if (interestIncomeNet === null || noninterestIncome === null) {
+        return null;
+      }
+
+      return interestIncomeNet + noninterestIncome;
+    }
+  },
+  {
+    metricCode: "net_income",
+    label: "Net Income",
+    hierarchyPath: ["Profitability", "Net Income"],
+    unit: "USD",
+    concepts: ["NetIncomeLoss"],
+    statement: "income_statement",
+    kind: "duration",
+    quarterlyStrategy: "discrete_or_subtract",
+    ttmStrategy: "sum"
+  },
+  {
+    metricCode: "eps_diluted",
+    label: "Diluted EPS",
+    hierarchyPath: ["Per Share", "Diluted EPS"],
+    unit: "USD/shares",
+    concepts: ["EarningsPerShareDiluted"],
+    statement: "income_statement",
+    kind: "duration",
+    quarterlyStrategy: "discrete_only",
+    ttmStrategy: "latest_annual"
+  },
+  {
+    metricCode: "shares_diluted",
+    label: "Weighted Avg. Diluted Shares",
+    hierarchyPath: ["Per Share", "Weighted Avg. Diluted Shares"],
+    unit: "shares",
+    concepts: ["WeightedAverageNumberOfDilutedSharesOutstanding"],
+    statement: "income_statement",
+    kind: "duration",
+    quarterlyStrategy: "discrete_only",
+    ttmStrategy: "latest_annual"
+  }
+];
+
+function getStatementDefinitions(
+  statement: StatementType,
+  sectorProfile: SectorProfile
+): StatementMetricDefinition[] {
+  if (statement === "income_statement" && sectorProfile === "bank") {
+    return BANK_INCOME_STATEMENT_DEFINITIONS;
+  }
+
+  return DEFAULT_STATEMENT_DEFINITIONS[statement];
+}
 
 function detectSectorProfile(sic: string | undefined): SectorProfile {
   if (!sic) {
@@ -698,7 +787,8 @@ export function mapStatement(input: {
   companyFacts: SecCompanyFacts;
   submissions: SecSubmissions;
 }): NormalizedStatementResponse {
-  const definitions = STATEMENT_DEFINITIONS[input.requestedStatement];
+  const sectorProfile = detectSectorProfile(input.submissions.sic);
+  const definitions = getStatementDefinitions(input.requestedStatement, sectorProfile);
   const baseDefinitions = definitions.filter(isBaseDefinition);
   if (baseDefinitions.length === 0) {
     throw new NotFoundError(
@@ -855,7 +945,6 @@ export function mapStatement(input: {
   }
 
   const rows = buildDisplayRows(definitions, outputColumns, metricValues);
-  const sectorProfile = detectSectorProfile(input.submissions.sic);
   const fiscalYearEnd = formatFiscalYearEnd(input.submissions.fiscalYearEnd);
   const frequencyLabel = input.frequency === "annual" ? "Annual" : "Quarterly";
   const qualityFlags: string[] = [];

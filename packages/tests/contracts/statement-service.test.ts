@@ -9,6 +9,73 @@ import {
 } from "../../core/src";
 import { mapStatement } from "../../adapters/sec-edgar/src/mapper";
 
+const syntheticBankCompanyFacts = {
+  cik: 123456,
+  entityName: "Synthetic Bank Corp.",
+  facts: {
+    "us-gaap": {
+      "InterestIncomeExpenseNet": {
+        units: {
+          USD: [
+            { start: "2025-01-01", end: "2025-03-31", val: 10, accn: "bq1", fy: 2025, fp: "Q1", form: "10-Q", filed: "2025-05-01" },
+            { start: "2025-04-01", end: "2025-06-30", val: 11, accn: "bq2", fy: 2025, fp: "Q2", form: "10-Q", filed: "2025-08-01" },
+            { start: "2025-07-01", end: "2025-09-30", val: 12, accn: "bq3", fy: 2025, fp: "Q3", form: "10-Q", filed: "2025-11-01" },
+            { start: "2025-01-01", end: "2025-12-31", val: 46, accn: "bfy", fy: 2025, fp: "FY", form: "10-K", filed: "2026-02-01" }
+          ]
+        }
+      },
+      "NoninterestIncome": {
+        units: {
+          USD: [
+            { start: "2025-01-01", end: "2025-03-31", val: 8, accn: "nq1", fy: 2025, fp: "Q1", form: "10-Q", filed: "2025-05-01" },
+            { start: "2025-04-01", end: "2025-06-30", val: 9, accn: "nq2", fy: 2025, fp: "Q2", form: "10-Q", filed: "2025-08-01" },
+            { start: "2025-07-01", end: "2025-09-30", val: 10, accn: "nq3", fy: 2025, fp: "Q3", form: "10-Q", filed: "2025-11-01" },
+            { start: "2025-01-01", end: "2025-12-31", val: 38, accn: "nfy", fy: 2025, fp: "FY", form: "10-K", filed: "2026-02-01" }
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        units: {
+          USD: [
+            { start: "2025-01-01", end: "2025-03-31", val: 6, accn: "iq1", fy: 2025, fp: "Q1", form: "10-Q", filed: "2025-05-01" },
+            { start: "2025-04-01", end: "2025-06-30", val: 7, accn: "iq2", fy: 2025, fp: "Q2", form: "10-Q", filed: "2025-08-01" },
+            { start: "2025-07-01", end: "2025-09-30", val: 8, accn: "iq3", fy: 2025, fp: "Q3", form: "10-Q", filed: "2025-11-01" },
+            { start: "2025-01-01", end: "2025-12-31", val: 30, accn: "ify", fy: 2025, fp: "FY", form: "10-K", filed: "2026-02-01" }
+          ]
+        }
+      },
+      "EarningsPerShareDiluted": {
+        units: {
+          "USD/shares": [
+            { start: "2025-01-01", end: "2025-03-31", val: 2.0, accn: "eq1", fy: 2025, fp: "Q1", form: "10-Q", filed: "2025-05-01" },
+            { start: "2025-04-01", end: "2025-06-30", val: 2.1, accn: "eq2", fy: 2025, fp: "Q2", form: "10-Q", filed: "2025-08-01" },
+            { start: "2025-07-01", end: "2025-09-30", val: 2.2, accn: "eq3", fy: 2025, fp: "Q3", form: "10-Q", filed: "2025-11-01" },
+            { start: "2025-01-01", end: "2025-12-31", val: 8.5, accn: "efy", fy: 2025, fp: "FY", form: "10-K", filed: "2026-02-01" }
+          ]
+        }
+      },
+      "WeightedAverageNumberOfDilutedSharesOutstanding": {
+        units: {
+          shares: [
+            { start: "2025-01-01", end: "2025-03-31", val: 3.0, accn: "sq1", fy: 2025, fp: "Q1", form: "10-Q", filed: "2025-05-01" },
+            { start: "2025-04-01", end: "2025-06-30", val: 3.1, accn: "sq2", fy: 2025, fp: "Q2", form: "10-Q", filed: "2025-08-01" },
+            { start: "2025-07-01", end: "2025-09-30", val: 3.2, accn: "sq3", fy: 2025, fp: "Q3", form: "10-Q", filed: "2025-11-01" },
+            { start: "2025-01-01", end: "2025-12-31", val: 3.15, accn: "sfy", fy: 2025, fp: "FY", form: "10-K", filed: "2026-02-01" }
+          ]
+        }
+      }
+    }
+  }
+} as const;
+
+const syntheticBankSubmissions = {
+  name: "Synthetic Bank Corp.",
+  tickers: ["SBK"],
+  sic: "6021",
+  fiscalYearEnd: "1231",
+  filings: { recent: {} }
+} as const;
+
 describe("statement service", () => {
   it("maps annual income statements into the normalized contract", async () => {
     const service = createStatementService({
@@ -160,5 +227,25 @@ describe("statement service", () => {
 
     expect(statement.periods.TTM.eps_diluted).toBe(7.46);
     expect(statement.periods.TTM.shares_diluted).toBe(15004697000);
+  });
+
+  it("uses the bank income template and derives revenue from bank-specific concepts", () => {
+    const statement = mapStatement({
+      ticker: "SBK",
+      requestedStatement: "income_statement",
+      frequency: "quarterly",
+      periods: 4,
+      includeTtm: true,
+      companyFacts: syntheticBankCompanyFacts as never,
+      submissions: syntheticBankSubmissions as never
+    });
+
+    expect(statement.rows.some((row) => row.metricCode === "gross_profit")).toBe(false);
+    expect(statement.periods["2025-Q1"].interest_income_net).toBe(10);
+    expect(statement.periods["2025-Q1"].noninterest_income).toBe(8);
+    expect(statement.periods["2025-Q1"].revenue_total).toBe(18);
+    expect(statement.periods.TTM.revenue_total).toBe(84);
+    expect(statement.periods.TTM.eps_diluted).toBe(8.5);
+    expect(statement.periods.TTM.shares_diluted).toBe(3.15);
   });
 });
