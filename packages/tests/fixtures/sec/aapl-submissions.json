@@ -1,0 +1,9 @@
+{
+  "name": "Apple Inc.",
+  "tickers": ["AAPL"],
+  "sic": "3571",
+  "fiscalYearEnd": "0926",
+  "filings": {
+    "recent": {}
+  }
+}
