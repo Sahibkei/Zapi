@@ -5,9 +5,12 @@
   "description": "Live-pull, zero-persistence fundamentals API.",
   "scripts": {
     "dev": "tsx watch apps/api/src/index.ts",
+    "dev:test": "powershell -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/apps/api/src/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "export:statement": "node scripts/export-statement.mjs",
+    "smoke:test": "node scripts/smoke-test.mjs"
   },
   "engines": {
     "node": ">=22"
