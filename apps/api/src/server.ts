@@ -1,14 +1,22 @@
 import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import {
+  PLAN_DEFINITIONS,
+  createAuthResolver,
+  createInMemoryRateLimiter,
   createStatementService,
   formatMatrixStatement,
   formatNormalizedStatement,
   isZapiError,
+  parseServiceKeys,
+  requireRegimeAccess,
   StatementRequestSchema,
-  type StatementQueryInput
+  type AuthContext,
+  type RateLimitResult,
+  type StatementQueryInput,
+  type StatementSourceRegime
 } from "../../../packages/core/src";
 import { createCompaniesHouseClient } from "../../../packages/adapters/companies-house/src";
 import { createEdinetClient } from "../../../packages/adapters/edinet/src";
@@ -134,15 +142,16 @@ function renderLandingPage(): string {
   <body>
     <main>
       <section class="hero">
-        <span class="eyebrow">Zapi / Federation Layer</span>
-        <h1>Live fundamentals without a warehouse.</h1>
+        <span class="eyebrow">Zapi / Plans And Access</span>
+        <h1>Live fundamentals with plan-aware access.</h1>
         <p class="lede">
-          Zapi pulls official filing data on demand, normalizes it into a stable house contract,
-          and exposes one API surface across SEC EDGAR, Companies House, EDINET, and future
-          India support.
+          Zapi is now structured for site-linked auth, plan tiers, region gating, and request limits.
+          Anonymous traffic can use the public SEC layer, while signed site users can unlock higher
+          limits and more regimes.
         </p>
         <div class="actions">
           <a class="button" href="/docs">Open API docs</a>
+          <a class="button secondary" href="/auth">Auth and plans</a>
           <a class="button secondary" href="/integration">Integration guide</a>
           <a class="button secondary" href="/v1/regimes">Inspect regime status</a>
         </div>
@@ -152,24 +161,23 @@ function renderLandingPage(): string {
         <article class="card">
           <h2>Endpoints</h2>
           <ul class="list">
-            <li><code>GET /health</code></li>
-            <li><code>GET /docs</code></li>
             <li><code>GET /v1/regimes</code></li>
+            <li><code>GET /v1/auth/status</code></li>
             <li><code>GET /v1/statements/:identifier</code></li>
           </ul>
         </article>
         <article class="card">
-          <h2>Regime coverage</h2>
+          <h2>Plan model</h2>
           <ul class="list">
-            <li>SEC EDGAR live statement support</li>
-            <li>Companies House adapter scaffold</li>
-            <li>EDINET adapter scaffold</li>
-            <li>India placeholder slot</li>
+            <li><code>public</code>: anonymous SEC access</li>
+            <li><code>free</code>: signed SEC users</li>
+            <li><code>pro</code>: higher limits plus UK and Japan</li>
+            <li><code>scale</code>: highest limits plus future regions</li>
           </ul>
         </article>
         <article class="card">
-          <h2>Contract example</h2>
-          <p>Use <code>?regime=sec_edgar</code> for live US statements today. Use <code>/v1/regimes</code> to see what is live, scaffolded, or still a placeholder across the wider architecture.</p>
+          <h2>Site integration</h2>
+          <p>Use a signed site bearer token or a service key for your backend. The API returns limit headers so your site can show current usage and upgrade paths.</p>
         </article>
       </section>
     </main>
@@ -233,45 +241,224 @@ function renderIntegrationPage(): string {
     <main>
       <section class="panel">
         <h1>Integration Guide</h1>
-        <p>Use the normalized endpoint for app logic and the matrix endpoint for Morningstar-style rendering. Choose the source regime explicitly when you are outside the US.</p>
+        <p>Use the normalized endpoint for app logic and the matrix endpoint for Morningstar-style rendering. Signed site users can be mapped to free or paid plans without changing the statement contract.</p>
       </section>
       <section class="panel">
         <h2>Recommended endpoint patterns</h2>
         <pre><code>GET /v1/statements/AAPL?regime=sec_edgar&statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true
 GET /v1/statements/AAPL?regime=sec_edgar&statement=income_statement&frequency=annual&format=normalized&periods=5&view=as_reported
-GET /v1/statements/00001995?regime=companies_house&statement=income_statement&frequency=annual&format=normalized
-GET /v1/statements/E00001?regime=edinet&statement=income_statement&frequency=annual&format=normalized
+GET /v1/auth/status
 GET /v1/regimes</code></pre>
       </section>
       <section class="panel">
-        <h2>React usage</h2>
+        <h2>Frontend flow</h2>
         <pre><code>const response = await fetch(
-  "/v1/statements/AAPL?regime=sec_edgar&statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true"
+  "/v1/statements/AAPL?regime=sec_edgar&statement=income_statement&format=normalized",
+  {
+    headers: {
+      Authorization: \`Bearer \${siteToken}\`
+    }
+  }
 );
-const statement = await response.json();
 
-statement.columns;
-statement.rows;
-statement.periods["2025"].revenue_total;</code></pre>
+const statement = await response.json();
+const plan = response.headers.get("x-zapi-plan");
+const remaining = response.headers.get("x-ratelimit-remaining");</code></pre>
       </section>
       <section class="panel">
-        <h2>Debug trace</h2>
-        <p>Add <code>debug=true</code> only when you need source concepts and accession trace data for inspection or QA.</p>
+        <h2>Region gating</h2>
+        <p><code>public</code> and <code>free</code> can use only <code>sec_edgar</code>. Paid plans unlock extra regimes as they come online.</p>
       </section>
       <section class="panel">
-        <h2>View selection</h2>
-        <p><code>view=restated</code> returns the latest filing for a period. <code>view=as_reported</code> returns the earliest filing for that same period, which is useful when later amendments changed the numbers.</p>
+        <h2>Rate-limit headers</h2>
+        <p>Statement responses include <code>x-ratelimit-limit</code>, <code>x-ratelimit-remaining</code>, <code>x-ratelimit-reset</code>, and <code>x-zapi-plan</code>.</p>
       </section>
       <section class="panel">
-        <h2>Regime selection</h2>
-        <p><code>regime=sec_edgar</code> is live today. <code>companies_house</code> and <code>edinet</code> are wired into the federation layer but still return parser-pending responses until their filing parsers are added. <code>india_placeholder</code> remains the reserved future adapter slot.</p>
-      </section>
-      <section class="panel">
-        <p><a href="/">Back to landing page</a> | <a href="/docs">Open Swagger docs</a></p>
+        <p><a href="/">Back to landing page</a> | <a href="/auth">Auth and plans</a> | <a href="/docs">Open Swagger docs</a></p>
       </section>
     </main>
   </body>
 </html>`;
+}
+
+function renderAuthPage(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zapi Auth</title>
+    <style>
+      :root {
+        --bg: #0b1320;
+        --panel: #132032;
+        --text: #f1f7ff;
+        --muted: #a7b9cf;
+        --line: rgba(166, 192, 222, 0.18);
+        --accent: #48d4a3;
+        --warn: #e6b86a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(72, 212, 163, 0.14), transparent 28%),
+          linear-gradient(180deg, #08111b 0%, #0c1725 100%);
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 40px 24px 72px;
+      }
+      .panel {
+        background: rgba(19, 32, 50, 0.9);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 28px;
+        margin-bottom: 18px;
+      }
+      .grid {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+      }
+      th {
+        color: var(--text);
+      }
+      pre {
+        overflow: auto;
+        padding: 16px;
+        border-radius: 16px;
+        background: #08121d;
+        border: 1px solid var(--line);
+      }
+      code, pre {
+        font-family: "Courier New", monospace;
+      }
+      h1, h2 { margin-top: 0; }
+      p, li { color: var(--muted); line-height: 1.65; }
+      .tag {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(72, 212, 163, 0.12);
+        color: var(--accent);
+      }
+      a { color: var(--warn); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <span class="tag">Site-linked auth</span>
+        <h1>Auth and plans</h1>
+        <p>Zapi is structured so your site can sign users in, mint a bearer token with the user plan, and let the API enforce request limits and region access without duplicating billing logic inside every route.</p>
+      </section>
+      <section class="panel">
+        <h2>Plan matrix</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Plan</th>
+              <th>Requests/hour</th>
+              <th>Regions</th>
+              <th>Use case</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>public</td>
+              <td>60</td>
+              <td>SEC</td>
+              <td>Anonymous discovery traffic</td>
+            </tr>
+            <tr>
+              <td>free</td>
+              <td>250</td>
+              <td>SEC</td>
+              <td>Signed site users</td>
+            </tr>
+            <tr>
+              <td>pro</td>
+              <td>2500</td>
+              <td>SEC, UK, Japan</td>
+              <td>Paid users with broader coverage</td>
+            </tr>
+            <tr>
+              <td>scale</td>
+              <td>10000</td>
+              <td>All configured regimes</td>
+              <td>Highest-volume or enterprise access</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="panel">
+        <h2>Bearer token contract</h2>
+        <p>Use an HS256 JWT from your site backend. Required claims are <code>sub</code>, <code>plan</code>, <code>iss</code>, <code>aud</code>, and <code>exp</code>.</p>
+        <pre><code>{
+  "sub": "user_123",
+  "email": "user@example.com",
+  "name": "Example User",
+  "plan": "free",
+  "iss": "your-site",
+  "aud": "zapi-api",
+  "exp": 1767225600
+}</code></pre>
+      </section>
+      <section class="panel">
+        <h2>Backend service key</h2>
+        <p>Your site backend can also call Zapi with <code>x-zapi-api-key</code> for server-to-server traffic. Configure keys with <code>ZAPI_SERVICE_KEYS</code>.</p>
+      </section>
+      <section class="panel">
+        <h2>Environment</h2>
+        <ul>
+          <li><code>ZAPI_JWT_SECRET</code>: shared secret used to verify site JWTs</li>
+          <li><code>ZAPI_JWT_ISSUER</code>: expected issuer from your site backend</li>
+          <li><code>ZAPI_JWT_AUDIENCE</code>: expected audience for Zapi tokens</li>
+          <li><code>ZAPI_SERVICE_KEYS</code>: JSON object of backend service keys and plans</li>
+        </ul>
+      </section>
+      <section class="panel">
+        <p><a href="/">Back to landing page</a> | <a href="/integration">Integration guide</a> | <a href="/docs">Open Swagger docs</a></p>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+function resolveAuthContext(
+  request: FastifyRequest,
+  authResolver: ReturnType<typeof createAuthResolver>
+): AuthContext {
+  return authResolver.resolve({
+    authorization: typeof request.headers.authorization === "string"
+      ? request.headers.authorization
+      : undefined,
+    apiKey: typeof request.headers["x-zapi-api-key"] === "string"
+      ? request.headers["x-zapi-api-key"]
+      : undefined,
+    remoteAddress: request.ip
+  });
+}
+
+function applyRateLimitHeaders(reply: { header: (name: string, value: string | number) => unknown }, auth: AuthContext, rateLimit: RateLimitResult): void {
+  reply.header("x-zapi-plan", auth.plan.id);
+  reply.header("x-ratelimit-limit", rateLimit.limit);
+  reply.header("x-ratelimit-remaining", rateLimit.remaining);
+  reply.header("x-ratelimit-reset", rateLimit.resetAt);
 }
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -293,6 +480,13 @@ export async function buildServer(): Promise<FastifyInstance> {
     edinetClient,
     indiaClient
   });
+  const authResolver = createAuthResolver({
+    jwtSecret: process.env.ZAPI_JWT_SECRET,
+    jwtIssuer: process.env.ZAPI_JWT_ISSUER ?? "your-site",
+    jwtAudience: process.env.ZAPI_JWT_AUDIENCE ?? "zapi-api",
+    serviceKeys: parseServiceKeys(process.env.ZAPI_SERVICE_KEYS)
+  });
+  const rateLimiter = createInMemoryRateLimiter();
 
   await server.register(cors, {
     origin: true
@@ -303,7 +497,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       info: {
         title: "Zapi API",
         version: "0.1.0",
-        description: "Live-pull fundamentals API with a federated source-adapter architecture."
+        description: "Live-pull fundamentals API with federated adapters, plan-aware auth, and request limits."
       }
     }
   });
@@ -320,6 +514,10 @@ export async function buildServer(): Promise<FastifyInstance> {
     reply.type("text/html").send(renderIntegrationPage());
   });
 
+  server.get("/auth", async (_, reply) => {
+    reply.type("text/html").send(renderAuthPage());
+  });
+
   server.get("/health", async () => ({
     status: "ok",
     service: "zapi",
@@ -330,6 +528,48 @@ export async function buildServer(): Promise<FastifyInstance> {
     regimes: statementService.listRegimes()
   }));
 
+  server.get(
+    "/v1/auth/status",
+    {
+      schema: {
+        summary: "Inspect the current auth context, plan, and region access",
+        headers: {
+          type: "object",
+          properties: {
+            authorization: {
+              type: "string",
+              description: "Bearer site token"
+            },
+            "x-zapi-api-key": {
+              type: "string",
+              description: "Server-to-server API key"
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const auth = resolveAuthContext(request, authResolver);
+      const rateLimit = rateLimiter.consume(auth, "auth_status");
+      applyRateLimitHeaders(reply, auth, rateLimit);
+
+      return {
+        authMode: auth.mode,
+        subject: auth.subject,
+        email: auth.email,
+        displayName: auth.displayName,
+        plan: auth.plan.id,
+        limits: {
+          requestsPerHour: auth.plan.requestsPerHour,
+          remainingThisHour: rateLimit.remaining,
+          resetAt: rateLimit.resetAt
+        },
+        allowedRegimes: auth.plan.regimes,
+        features: auth.plan.features
+      };
+    }
+  );
+
   server.get<{
     Params: { identifier: string };
     Querystring: StatementQueryInput;
@@ -338,6 +578,19 @@ export async function buildServer(): Promise<FastifyInstance> {
     {
       schema: {
         summary: "Fetch a canonical statement for an issuer identifier",
+        headers: {
+          type: "object",
+          properties: {
+            authorization: {
+              type: "string",
+              description: "Bearer site token"
+            },
+            "x-zapi-api-key": {
+              type: "string",
+              description: "Server-to-server API key"
+            }
+          }
+        },
         params: {
           type: "object",
           required: ["identifier"],
@@ -389,7 +642,7 @@ export async function buildServer(): Promise<FastifyInstance> {
         }
       }
     },
-    async (request) => {
+    async (request, reply) => {
       const input = StatementRequestSchema.parse({
         ticker: request.params.identifier,
         regime: request.query.regime,
@@ -401,6 +654,11 @@ export async function buildServer(): Promise<FastifyInstance> {
         includeTtm: request.query.includeTtm,
         debug: request.query.debug
       });
+
+      const auth = resolveAuthContext(request, authResolver);
+      requireRegimeAccess(auth, input.regime as StatementSourceRegime);
+      const rateLimit = rateLimiter.consume(auth, "statements");
+      applyRateLimitHeaders(reply, auth, rateLimit);
 
       const statement = await statementService.getStatement(input);
       if (input.format === "matrix") {

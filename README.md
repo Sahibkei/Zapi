@@ -9,6 +9,7 @@ Zapi is a live-pull, zero-persistence fundamentals API. It fetches filing-derive
 - Annual and quarterly statements for `income_statement`, `balance_sheet`, and `cash_flow`
 - Optional TTM assembly for duration statements
 - `restated` and `as_reported` filing views
+- Plan-aware auth and in-memory rate limiting
 - Normalized JSON and matrix output formats
 - API landing page, OpenAPI docs, and health endpoint
 - Deterministic contract tests with SEC fixtures
@@ -33,7 +34,9 @@ Server defaults:
 - Base URL: `http://localhost:3000`
 - OpenAPI docs: `http://localhost:3000/docs`
 - Landing page: `http://localhost:3000/`
+- Auth and plans page: `http://localhost:3000/auth`
 - Regime status: `http://localhost:3000/v1/regimes`
+- Auth status: `http://localhost:3000/v1/auth/status`
 
 Optional environment variables:
 
@@ -41,6 +44,10 @@ Optional environment variables:
 - `HOST`: bind host, default `0.0.0.0`
 - `SEC_USER_AGENT`: contact string for SEC requests. Replace the placeholder before production use.
 - `COMPANIES_HOUSE_API_KEY`: required once the UK filing parser is added
+- `ZAPI_JWT_SECRET`: shared secret for verifying site JWTs
+- `ZAPI_JWT_ISSUER`: expected issuer for site JWTs, default `your-site`
+- `ZAPI_JWT_AUDIENCE`: expected audience for site JWTs, default `zapi-api`
+- `ZAPI_SERVICE_KEYS`: JSON object of backend service keys and assigned plans
 
 ## Example requests
 
@@ -52,11 +59,28 @@ curl "http://localhost:3000/v1/statements/JPM?regime=sec_edgar&statement=income_
 curl "http://localhost:3000/v1/statements/00001995?regime=companies_house&statement=income_statement&format=normalized"
 curl "http://localhost:3000/v1/statements/E00001?regime=edinet&statement=income_statement&format=normalized"
 curl "http://localhost:3000/v1/regimes"
+curl "http://localhost:3000/v1/auth/status"
 ```
 
 Normalized responses are compact by default. Source trace data is returned only when `debug=true`.
 `view=restated` picks the latest filed fact for a period. `view=as_reported` picks the earliest filed fact for that same period.
 `regime=sec_edgar` is live. `companies_house` and `edinet` now exist in the federation layer but still return parser-pending responses until their filing parsers are built.
+
+## Auth and plans
+
+- `public`: anonymous access, SEC only, `60` requests/hour
+- `free`: signed site user, SEC only, `250` requests/hour
+- `pro`: paid plan, SEC plus UK and Japan access, `2500` requests/hour
+- `scale`: highest plan, all configured regimes, `10000` requests/hour
+
+Bearer tokens should be HS256 JWTs minted by your site backend. Required claims are `sub`, `plan`, `iss`, `aud`, and `exp`.
+
+Statement responses include:
+
+- `x-zapi-plan`
+- `x-ratelimit-limit`
+- `x-ratelimit-remaining`
+- `x-ratelimit-reset`
 
 ## What still needs to be provided
 

@@ -15,6 +15,24 @@ export class UnsupportedFeatureError extends ZapiError {
   }
 }
 
+export class AuthenticationError extends ZapiError {
+  constructor(message: string, details?: unknown) {
+    super(message, 401, details);
+  }
+}
+
+export class AuthorizationError extends ZapiError {
+  constructor(message: string, details?: unknown) {
+    super(message, 403, details);
+  }
+}
+
+export class RateLimitError extends ZapiError {
+  constructor(message: string, details?: unknown) {
+    super(message, 429, details);
+  }
+}
+
 export class NotFoundError extends ZapiError {
   constructor(message: string, details?: unknown) {
     super(message, 404, details);

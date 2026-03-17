@@ -1,3 +1,4 @@
+export * from "./auth";
 export * from "./contracts";
 export * from "./errors";
 export * from "./public-response";
