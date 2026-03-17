@@ -219,6 +219,29 @@ describe("statement service", () => {
     expect(lines.at(-1)).toBe("Fiscal year ends in Sep 30 | USD,,,");
   });
 
+  it("adds formatted display values in thousands with parentheses for negatives", () => {
+    const statement = mapStatement({
+      ticker: "AAPL",
+      requestedStatement: "income_statement",
+      frequency: "annual",
+      view: "restated",
+      periods: 3,
+      includeTtm: false,
+      companyFacts,
+      submissions
+    });
+
+    const matrix = formatMatrixStatement(statement);
+    const revenueRow = matrix.rows.find((row) => row.metric_code === "revenue_total");
+    const costRow = matrix.rows.find((row) => row.metric_code === "cost_of_revenue");
+    const epsRow = matrix.rows.find((row) => row.metric_code === "eps_diluted");
+
+    expect(matrix.meta.displayScale).toBe("thousands_when_large");
+    expect(revenueRow?.display_values).toEqual(["383,285,000", "391,035,000", "416,161,000"]);
+    expect(costRow?.display_values).toEqual(["(214,137,000)", "(210,352,000)", "(220,960,000)"]);
+    expect(epsRow?.display_values).toEqual(["6.13", "6.08", "7.46"]);
+  });
+
   it("allows as-reported requests through the service layer", async () => {
     const service = createStatementService({
       secEdgarClient: {

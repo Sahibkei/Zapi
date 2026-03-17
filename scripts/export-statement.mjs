@@ -56,7 +56,7 @@ function buildMatrixCsv(statement) {
 
   for (const row of statement.rows) {
     const label = `${"    ".repeat(row.depth)}${row.label}`;
-    lines.push([label, ...row.values].map(csvEscape).join(","));
+    lines.push([label, ...(row.display_values ?? row.values)].map(csvEscape).join(","));
   }
 
   lines.push(

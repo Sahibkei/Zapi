@@ -100,14 +100,19 @@ export interface PublicNormalizedStatementResponse {
 }
 
 export interface MatrixStatementResponse {
-  meta: Omit<StatementMeta, "companyName" | "qualityFlags" | "sectorProfile" | "sourceRegime">;
+  meta: Omit<StatementMeta, "companyName" | "qualityFlags" | "sectorProfile" | "sourceRegime"> & {
+    displayScale: "thousands_when_large";
+    negativeStyle: "parentheses";
+  };
   columns: string[];
   rows: Array<{
     metric_code: string;
     label: string;
     depth: number;
     row_kind: "section" | "metric";
+    unit: string;
     values: Array<number | null>;
+    display_values: Array<string>;
   }>;
   footer: string;
 }

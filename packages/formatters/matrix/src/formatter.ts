@@ -1,5 +1,24 @@
 import type { MatrixStatementResponse, NormalizedStatementResponse } from "../../../core/src";
 
+function shouldScaleThousands(unit: string, value: number): boolean {
+  return ["USD", "shares"].includes(unit) && Math.abs(value) >= 1000;
+}
+
+function formatDisplayValue(value: number | null, unit: string): string {
+  if (value === null) {
+    return "";
+  }
+
+  const scaledValue = shouldScaleThousands(unit, value) ? value / 1000 : value;
+  const absoluteValue = Math.abs(scaledValue);
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: Number.isInteger(absoluteValue) ? 0 : 2,
+    maximumFractionDigits: Number.isInteger(absoluteValue) ? 0 : 2
+  }).format(absoluteValue);
+
+  return scaledValue < 0 ? `(${formatted})` : formatted;
+}
+
 export function formatMatrixStatement(
   statement: NormalizedStatementResponse
 ): MatrixStatementResponse {
@@ -11,7 +30,9 @@ export function formatMatrixStatement(
       view: statement.meta.view,
       currency: statement.meta.currency,
       fiscalYearEnd: statement.meta.fiscalYearEnd,
-      titleSlug: statement.meta.titleSlug
+      titleSlug: statement.meta.titleSlug,
+      displayScale: "thousands_when_large",
+      negativeStyle: "parentheses"
     },
     columns: statement.columns,
     rows: statement.rows.map((row) => ({
@@ -19,7 +40,9 @@ export function formatMatrixStatement(
       label: row.label,
       depth: row.depth,
       row_kind: row.rowKind,
-      values: row.values
+      unit: row.unit,
+      values: row.values,
+      display_values: row.values.map((value) => formatDisplayValue(value, row.unit))
     })),
     footer: `Fiscal year ends in ${statement.meta.fiscalYearEnd} | ${statement.meta.currency}`
   };
@@ -46,7 +69,7 @@ export function formatMatrixCsv(statement: MatrixStatementResponse): string {
 
   for (const row of statement.rows) {
     const label = `${"    ".repeat(row.depth)}${row.label}`;
-    lines.push([label, ...row.values].map(csvEscape).join(","));
+    lines.push([label, ...row.display_values].map(csvEscape).join(","));
   }
 
   lines.push([statement.footer, ...statement.columns.map(() => "")].map(csvEscape).join(","));
