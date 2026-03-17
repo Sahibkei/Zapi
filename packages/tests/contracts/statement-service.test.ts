@@ -144,5 +144,21 @@ describe("statement service", () => {
 
     expect(incomeStatement.columns).toEqual(["2024", "2025", "TTM"]);
     expect(incomeStatement.periods.TTM.revenue_total).toBe(540);
+    expect(incomeStatement.periods.TTM.shares_diluted).toBe(11.75);
+  });
+
+  it("uses annual proxies for per-share TTM metrics when quarter subtraction is invalid", () => {
+    const statement = mapStatement({
+      ticker: "AAPL",
+      requestedStatement: "income_statement",
+      frequency: "annual",
+      periods: 1,
+      includeTtm: true,
+      companyFacts,
+      submissions
+    });
+
+    expect(statement.periods.TTM.eps_diluted).toBe(7.46);
+    expect(statement.periods.TTM.shares_diluted).toBe(15004697000);
   });
 });

@@ -139,6 +139,7 @@ function renderLandingPage(): string {
         </p>
         <div class="actions">
           <a class="button" href="/docs">Open API docs</a>
+          <a class="button secondary" href="/integration">Integration guide</a>
           <a class="button secondary" href="/v1/statements/AAPL?statement=income_statement&format=normalized">Try AAPL income statement</a>
         </div>
       </section>
@@ -165,6 +166,93 @@ function renderLandingPage(): string {
           <h2>Contract example</h2>
           <p>Try <code>?statement=income_statement&frequency=quarterly&includeTtm=true</code>. Add <code>&debug=true</code> only when you need source trace facts.</p>
         </article>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+function renderIntegrationPage(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zapi Integration</title>
+    <style>
+      :root {
+        --bg: #0a1018;
+        --panel: #101c2b;
+        --text: #eef5ff;
+        --muted: #9bb0c9;
+        --line: rgba(163, 190, 216, 0.15);
+        --accent: #d8bf67;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at top right, rgba(216, 191, 103, 0.12), transparent 28%),
+          linear-gradient(180deg, #071019 0%, #0b1622 100%);
+        color: var(--text);
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 40px 24px 72px;
+      }
+      .panel {
+        background: rgba(16, 28, 43, 0.86);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 28px;
+        margin-bottom: 18px;
+      }
+      h1, h2 { margin-top: 0; }
+      p, li { color: var(--muted); line-height: 1.65; }
+      pre {
+        overflow: auto;
+        padding: 16px;
+        border-radius: 16px;
+        background: #08121d;
+        border: 1px solid var(--line);
+      }
+      code, pre {
+        font-family: "Courier New", monospace;
+      }
+      a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <h1>Integration Guide</h1>
+        <p>Use the normalized endpoint for app logic and the matrix endpoint for Morningstar-style rendering.</p>
+      </section>
+      <section class="panel">
+        <h2>Recommended endpoint patterns</h2>
+        <pre><code>GET /v1/statements/AAPL?statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true
+GET /v1/statements/JPM?statement=income_statement&frequency=quarterly&format=normalized&periods=4&includeTtm=true
+GET /v1/statements/MSFT?statement=cash_flow&frequency=annual&format=matrix&periods=3&includeTtm=true</code></pre>
+      </section>
+      <section class="panel">
+        <h2>React usage</h2>
+        <pre><code>const response = await fetch(
+  "/v1/statements/AAPL?statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true"
+);
+const statement = await response.json();
+
+statement.columns;
+statement.rows;
+statement.periods["2025"].revenue_total;</code></pre>
+      </section>
+      <section class="panel">
+        <h2>Debug trace</h2>
+        <p>Add <code>debug=true</code> only when you need source concepts and accession trace data for inspection or QA.</p>
+      </section>
+      <section class="panel">
+        <p><a href="/">Back to landing page</a> · <a href="/docs">Open Swagger docs</a></p>
       </section>
     </main>
   </body>
@@ -201,6 +289,10 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   server.get("/", async (_, reply) => {
     reply.type("text/html").send(renderLandingPage());
+  });
+
+  server.get("/integration", async (_, reply) => {
+    reply.type("text/html").send(renderIntegrationPage());
   });
 
   server.get("/health", async () => ({

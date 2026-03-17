@@ -17,7 +17,8 @@ interface StatementMetricDefinition {
   concepts: string[];
   statement: StatementType;
   kind: "instant" | "duration" | "derived";
-  ttmStrategy?: "sum" | "average" | "none";
+  quarterlyStrategy?: "discrete_or_subtract" | "discrete_only";
+  ttmStrategy?: "sum" | "average" | "latest_annual" | "none";
   derive?: (values: Record<string, number | null>) => number | null;
   deriveDependencies?: string[];
 }
@@ -62,6 +63,7 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       ],
       statement: "income_statement",
       kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum"
     },
     {
@@ -72,6 +74,7 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       concepts: ["GrossProfit"],
       statement: "income_statement",
       kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum"
     },
     {
@@ -82,6 +85,7 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       concepts: ["OperatingIncomeLoss"],
       statement: "income_statement",
       kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum"
     },
     {
@@ -92,6 +96,7 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       concepts: ["NetIncomeLoss"],
       statement: "income_statement",
       kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum"
     },
     {
@@ -102,7 +107,8 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       concepts: ["EarningsPerShareDiluted"],
       statement: "income_statement",
       kind: "duration",
-      ttmStrategy: "sum"
+      quarterlyStrategy: "discrete_only",
+      ttmStrategy: "latest_annual"
     },
     {
       metricCode: "shares_diluted",
@@ -112,7 +118,8 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       concepts: ["WeightedAverageNumberOfDilutedSharesOutstanding"],
       statement: "income_statement",
       kind: "duration",
-      ttmStrategy: "average"
+      quarterlyStrategy: "discrete_only",
+      ttmStrategy: "latest_annual"
     }
   ],
   balance_sheet: [
@@ -166,6 +173,7 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       concepts: ["NetCashProvidedByUsedInOperatingActivities"],
       statement: "cash_flow",
       kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum"
     },
     {
@@ -176,6 +184,7 @@ const STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefinition[]> 
       concepts: ["PaymentsToAcquirePropertyPlantAndEquipment"],
       statement: "cash_flow",
       kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum"
     },
     {
@@ -254,6 +263,15 @@ function getQuarterLabel(end: string | undefined): string {
   const date = new Date(end ?? "");
   const quarter = Math.floor(date.getUTCMonth() / 3) + 1;
   return `${date.getUTCFullYear()}-Q${quarter}`;
+}
+
+function isStale(end: string | undefined, thresholdDays = 400): boolean {
+  if (!end) {
+    return true;
+  }
+
+  const ageMs = Date.now() - Date.parse(end);
+  return ageMs / (1000 * 60 * 60 * 24) > thresholdDays;
 }
 
 function chooseBestFact(facts: SecFactUnit[]): SecFactUnit | undefined {
@@ -385,6 +403,7 @@ function buildInstantQuarterlySeries(
 }
 
 function buildDurationQuarterlySeries(
+  definition: StatementMetricDefinition & { kind: "duration" },
   sourcedFacts: SourcedFact[],
   periods: number
 ): PeriodCell[] {
@@ -466,7 +485,9 @@ function buildDurationQuarterlySeries(
     }
 
     const q2Value = directQ2?.val ?? (
-      ytdQ2 && q1Value !== null ? ytdQ2.val - q1Value : null
+      definition.quarterlyStrategy === "discrete_or_subtract" && ytdQ2 && q1Value !== null
+        ? ytdQ2.val - q1Value
+        : null
     );
     const q2Source = sourceFor(directQ2 ?? ytdQ2, q2Candidates);
     if (q2Value !== null && q2Source) {
@@ -482,7 +503,12 @@ function buildDurationQuarterlySeries(
     }
 
     const q3Value = directQ3?.val ?? (
-      ytdQ3 && q1Value !== null && q2Value !== null ? ytdQ3.val - q1Value - q2Value : null
+      definition.quarterlyStrategy === "discrete_or_subtract" &&
+      ytdQ3 &&
+      q1Value !== null &&
+      q2Value !== null
+        ? ytdQ3.val - q1Value - q2Value
+        : null
     );
     const q3Source = sourceFor(directQ3 ?? ytdQ3, q3Candidates);
     if (q3Value !== null && q3Source) {
@@ -498,7 +524,11 @@ function buildDurationQuarterlySeries(
     }
 
     const q4Value = directQ4?.val ?? (
-      annual && q1Value !== null && q2Value !== null && q3Value !== null
+      definition.quarterlyStrategy === "discrete_or_subtract" &&
+      annual &&
+      q1Value !== null &&
+      q2Value !== null &&
+      q3Value !== null
         ? annual.val - q1Value - q2Value - q3Value
         : null
     );
@@ -523,10 +553,30 @@ function buildDurationQuarterlySeries(
 
 function buildTtmCell(
   definition: StatementMetricDefinition,
-  quarterlyCells: PeriodCell[]
+  quarterlyCells: PeriodCell[],
+  annualCells: PeriodCell[]
 ): PeriodCell | null {
   if (definition.ttmStrategy === "none" || quarterlyCells.length < 4) {
-    return null;
+    if (definition.ttmStrategy !== "latest_annual") {
+      return null;
+    }
+  }
+
+  if (definition.ttmStrategy === "latest_annual") {
+    const latestAnnual = annualCells.at(-1);
+    if (!latestAnnual) {
+      return null;
+    }
+
+    return {
+      label: "TTM",
+      periodType: "ttm",
+      end: latestAnnual.end,
+      value: latestAnnual.value,
+      concept: latestAnnual.concept,
+      filing: "TTM",
+      accession: latestAnnual.accession
+    };
   }
 
   const lastFour = quarterlyCells.slice(-4);
@@ -560,6 +610,7 @@ function buildMetricSeries(
   periods: number
 ): {
   displayCells: PeriodCell[];
+  annualCells: PeriodCell[];
   quarterlyCells: PeriodCell[];
   currency: string;
 } {
@@ -570,8 +621,12 @@ function buildMetricSeries(
   let quarterlyCells: PeriodCell[] = [];
   if (definition.kind === "instant") {
     quarterlyCells = buildInstantQuarterlySeries(sourcedFacts, periods + 4);
-  } else {
-    quarterlyCells = buildDurationQuarterlySeries(sourcedFacts, periods + 4);
+  } else if (definition.kind === "duration") {
+    quarterlyCells = buildDurationQuarterlySeries(
+      definition as StatementMetricDefinition & { kind: "duration" },
+      sourcedFacts,
+      periods + 4
+    );
   }
 
   const displayCells = frequency === "annual"
@@ -582,6 +637,7 @@ function buildMetricSeries(
 
   return {
     displayCells,
+    annualCells,
     quarterlyCells,
     currency
   };
@@ -683,16 +739,24 @@ export function mapStatement(input: {
   }
 
   outputColumns = referenceSeries.displayCells.map((cell) => cell.label);
-  const referenceTtm =
-    input.includeTtm && isDurationStatement(input.requestedStatement)
-      ? buildTtmCell(referenceSeries.definition, referenceSeries.quarterlyCells)
-      : null;
-  if (referenceTtm) {
+  const hasAnyTtm =
+    input.includeTtm &&
+    isDurationStatement(input.requestedStatement) &&
+    preparedSeries.some((series) =>
+      buildTtmCell(series.definition, series.quarterlyCells, series.annualCells) !== null
+    );
+  if (hasAnyTtm) {
     outputColumns.push("TTM");
   }
 
   for (const series of preparedSeries) {
-    const { definition, displayCells, quarterlyCells, currency: metricCurrency } = series;
+    const {
+      definition,
+      displayCells,
+      annualCells,
+      quarterlyCells,
+      currency: metricCurrency
+    } = series;
 
     metricValues[definition.metricCode] = Object.fromEntries(
       displayCells.map((cell) => [cell.label, cell.value])
@@ -721,7 +785,7 @@ export function mapStatement(input: {
     }
 
     if (input.includeTtm && isDurationStatement(input.requestedStatement)) {
-      const ttmCell = buildTtmCell(definition, quarterlyCells);
+      const ttmCell = buildTtmCell(definition, quarterlyCells, annualCells);
       if (ttmCell) {
         metricValues[definition.metricCode].TTM = ttmCell.value;
         facts.push({
@@ -794,6 +858,17 @@ export function mapStatement(input: {
   const sectorProfile = detectSectorProfile(input.submissions.sic);
   const fiscalYearEnd = formatFiscalYearEnd(input.submissions.fiscalYearEnd);
   const frequencyLabel = input.frequency === "annual" ? "Annual" : "Quarterly";
+  const qualityFlags: string[] = [];
+
+  if (
+    rows.some((row) => row.rowKind === "metric" && row.qualityFlags.length > 0)
+  ) {
+    qualityFlags.push("partial_statement");
+  }
+
+  if (isStale(referenceSeries.displayCells.at(-1)?.end)) {
+    qualityFlags.push("stale_reference_period");
+  }
 
   return {
     meta: {
@@ -807,11 +882,7 @@ export function mapStatement(input: {
       titleSlug: `${input.ticker}_${input.requestedStatement.replaceAll("_", "-")}_${frequencyLabel}_Restated`,
       sourceRegime: "sec_edgar",
       sectorProfile,
-      qualityFlags: rows.some(
-        (row) => row.rowKind === "metric" && row.qualityFlags.length > 0
-      )
-        ? ["partial_statement"]
-        : []
+      qualityFlags
     },
     columns: outputColumns,
     rows,
