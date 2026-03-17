@@ -68,7 +68,17 @@ function buildCsv(statement) {
 }
 
 async function fetchJson(url, headers) {
-  const response = await fetch(url, { headers });
+  let response;
+  try {
+    response = await fetch(url, { headers });
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(
+        `Could not reach the local API at ${url}. Start the API in your VS Code terminal first with "npm run dev:test" or "npm run dev".`
+      );
+    }
+    throw error;
+  }
   const json = await response.json();
   return { response, json };
 }

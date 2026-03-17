@@ -93,7 +93,18 @@ async function main() {
   });
   const url = `${baseUrl}/v1/statements/${encodeURIComponent(identifier)}?${params.toString()}`;
   const headers = apiKey ? { "x-zapi-api-key": apiKey } : {};
-  const response = await fetch(url, { headers });
+  let response;
+  try {
+    response = await fetch(url, { headers });
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(
+        `Could not reach ${baseUrl}. Start the API in your VS Code terminal first with "npm run dev:test" or "npm run dev".`
+      );
+    }
+    throw error;
+  }
+
   const body = await response.json();
 
   if (!response.ok) {
