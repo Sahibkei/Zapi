@@ -5,7 +5,8 @@ import {
   type SectorProfile,
   type StatementFrequency,
   type StatementRow,
-  type StatementType
+  type StatementType,
+  type StatementView
 } from "../../../core/src";
 import type { SecCompanyFacts, SecFactUnit, SecSubmissions } from "./types";
 
@@ -363,17 +364,20 @@ function isStale(end: string | undefined, thresholdDays = 400): boolean {
   return ageMs / (1000 * 60 * 60 * 24) > thresholdDays;
 }
 
-function chooseBestFact(facts: SecFactUnit[]): SecFactUnit | undefined {
+function chooseBestFact(
+  facts: SecFactUnit[],
+  view: StatementView
+): SecFactUnit | undefined {
   return [...facts].sort((left, right) => {
-    const rightEnd = Date.parse(right.end ?? "");
-    const leftEnd = Date.parse(left.end ?? "");
-    if (rightEnd !== leftEnd) {
-      return rightEnd - leftEnd;
-    }
-
     const rightFiled = Date.parse(right.filed ?? right.end ?? "");
     const leftFiled = Date.parse(left.filed ?? left.end ?? "");
-    return rightFiled - leftFiled;
+    if (rightFiled !== leftFiled) {
+      return view === "restated" ? rightFiled - leftFiled : leftFiled - rightFiled;
+    }
+
+    const rightEnd = Date.parse(right.end ?? "");
+    const leftEnd = Date.parse(left.end ?? "");
+    return rightEnd - leftEnd;
   })[0];
 }
 
@@ -406,13 +410,14 @@ function selectAnnualSourcedFacts(
       return fact.fp === "FY" || !fact.start;
     }
 
-    return fact.fp === "FY" || getDurationDays(fact) >= 300;
+    return getDurationDays(fact) >= 300;
   });
 }
 
 function buildAnnualSeries(
   sourcedFacts: SourcedFact[],
-  periods: number
+  periods: number,
+  view: StatementView
 ): PeriodCell[] {
   const grouped = new Map<string, SourcedFact[]>();
   for (const sourcedFact of sourcedFacts) {
@@ -422,7 +427,10 @@ function buildAnnualSeries(
 
   const cells: PeriodCell[] = [];
   for (const [label, candidates] of grouped.entries()) {
-    const best = chooseBestFact(candidates.map((candidate) => candidate.fact));
+    const best = chooseBestFact(
+      candidates.map((candidate) => candidate.fact),
+      view
+    );
     const source = candidates.find((candidate) => candidate.fact === best);
     if (!best || !source) {
       continue;
@@ -446,7 +454,8 @@ function buildAnnualSeries(
 
 function buildInstantQuarterlySeries(
   sourcedFacts: SourcedFact[],
-  periods: number
+  periods: number,
+  view: StatementView
 ): PeriodCell[] {
   const filtered = sourcedFacts.filter(({ fact }) => {
     if (!fact.end || !fact.form) {
@@ -469,7 +478,10 @@ function buildInstantQuarterlySeries(
 
   const cells: PeriodCell[] = [];
   for (const [label, candidates] of grouped.entries()) {
-    const best = chooseBestFact(candidates.map((candidate) => candidate.fact));
+    const best = chooseBestFact(
+      candidates.map((candidate) => candidate.fact),
+      view
+    );
     const source = candidates.find((candidate) => candidate.fact === best);
     if (!best || !source) {
       continue;
@@ -494,7 +506,8 @@ function buildInstantQuarterlySeries(
 function buildDurationQuarterlySeries(
   definition: StatementMetricDefinition & { kind: "duration" },
   sourcedFacts: SourcedFact[],
-  periods: number
+  periods: number,
+  view: StatementView
 ): PeriodCell[] {
   const groupedByYear = new Map<string, Record<string, SourcedFact[]>>();
 
@@ -533,28 +546,32 @@ function buildDurationQuarterlySeries(
           const durationDays = getDurationDays(fact);
           return durationDays === 0 || durationDays <= 120;
         })
-        .map(({ fact }) => fact)
+        .map(({ fact }) => fact),
+      view
     );
     const directQ2 = chooseBestFact(
       q2Candidates
         .filter(({ fact }) => getDurationDays(fact) > 0 && getDurationDays(fact) <= 120)
-        .map(({ fact }) => fact)
+        .map(({ fact }) => fact),
+      view
     );
     const directQ3 = chooseBestFact(
       q3Candidates
         .filter(({ fact }) => getDurationDays(fact) > 0 && getDurationDays(fact) <= 120)
-        .map(({ fact }) => fact)
+        .map(({ fact }) => fact),
+      view
     );
     const directQ4 = chooseBestFact(
       q4Candidates
         .filter(({ fact }) => getDurationDays(fact) > 0 && getDurationDays(fact) <= 120)
-        .map(({ fact }) => fact)
+        .map(({ fact }) => fact),
+      view
     );
 
-    const ytdQ1 = chooseBestFact(q1Candidates.map(({ fact }) => fact));
-    const ytdQ2 = chooseBestFact(q2Candidates.map(({ fact }) => fact));
-    const ytdQ3 = chooseBestFact(q3Candidates.map(({ fact }) => fact));
-    const annual = chooseBestFact(fyCandidates.map(({ fact }) => fact));
+    const ytdQ1 = chooseBestFact(q1Candidates.map(({ fact }) => fact), view);
+    const ytdQ2 = chooseBestFact(q2Candidates.map(({ fact }) => fact), view);
+    const ytdQ3 = chooseBestFact(q3Candidates.map(({ fact }) => fact), view);
+    const annual = chooseBestFact(fyCandidates.map(({ fact }) => fact), view);
 
     const sourceFor = (target: SecFactUnit | undefined, candidates: SourcedFact[]) =>
       candidates.find((candidate) => candidate.fact === target);
@@ -696,7 +713,8 @@ function buildMetricSeries(
   definition: StatementMetricDefinition & { kind: "instant" | "duration" },
   companyFacts: SecCompanyFacts,
   frequency: StatementFrequency,
-  periods: number
+  periods: number,
+  view: StatementView
 ): {
   displayCells: PeriodCell[];
   annualCells: PeriodCell[];
@@ -705,16 +723,17 @@ function buildMetricSeries(
 } {
   const sourcedFacts = collectSourcedFacts(companyFacts, definition);
   const baseFacts = selectAnnualSourcedFacts(sourcedFacts, definition.kind);
-  const annualCells = buildAnnualSeries(baseFacts, periods);
+  const annualCells = buildAnnualSeries(baseFacts, periods, view);
 
   let quarterlyCells: PeriodCell[] = [];
   if (definition.kind === "instant") {
-    quarterlyCells = buildInstantQuarterlySeries(sourcedFacts, periods + 4);
+    quarterlyCells = buildInstantQuarterlySeries(sourcedFacts, periods + 4, view);
   } else if (definition.kind === "duration") {
     quarterlyCells = buildDurationQuarterlySeries(
       definition as StatementMetricDefinition & { kind: "duration" },
       sourcedFacts,
-      periods + 4
+      periods + 4,
+      view
     );
   }
 
@@ -782,6 +801,7 @@ export function mapStatement(input: {
   ticker: string;
   requestedStatement: StatementType;
   frequency: StatementFrequency;
+  view: StatementView;
   periods: number;
   includeTtm: boolean;
   companyFacts: SecCompanyFacts;
@@ -806,7 +826,8 @@ export function mapStatement(input: {
       definition,
       input.companyFacts,
       input.frequency,
-      input.periods
+      input.periods,
+      input.view
     )
   }));
 
@@ -860,7 +881,7 @@ export function mapStatement(input: {
         periodType: cell.periodType,
         periodEnd: cell.end,
         periodLabel: cell.label,
-        view: "restated",
+        view: input.view,
         value: cell.value,
         unit: definition.unit,
         signPolicy: "natural_source_sign",
@@ -885,7 +906,7 @@ export function mapStatement(input: {
           periodType: "ttm",
           periodEnd: ttmCell.end,
           periodLabel: "TTM",
-          view: "restated",
+          view: input.view,
           value: ttmCell.value,
           unit: definition.unit,
           signPolicy: "natural_source_sign",
@@ -929,7 +950,7 @@ export function mapStatement(input: {
         periodType: column === "TTM" ? "ttm" : input.frequency,
         periodEnd: column === "TTM" ? facts.at(-1)?.periodEnd ?? "" : "",
         periodLabel: column,
-        view: "restated",
+        view: input.view,
         value,
         unit: definition.unit,
         signPolicy: "natural_source_sign",
@@ -947,6 +968,7 @@ export function mapStatement(input: {
   const rows = buildDisplayRows(definitions, outputColumns, metricValues);
   const fiscalYearEnd = formatFiscalYearEnd(input.submissions.fiscalYearEnd);
   const frequencyLabel = input.frequency === "annual" ? "Annual" : "Quarterly";
+  const viewLabel = input.view === "restated" ? "Restated" : "AsReported";
   const qualityFlags: string[] = [];
 
   if (
@@ -965,10 +987,10 @@ export function mapStatement(input: {
       companyName: input.submissions.name,
       statement: input.requestedStatement,
       frequency: input.frequency,
-      view: "restated",
+      view: input.view,
       currency,
       fiscalYearEnd,
-      titleSlug: `${input.ticker}_${input.requestedStatement.replaceAll("_", "-")}_${frequencyLabel}_Restated`,
+      titleSlug: `${input.ticker}_${input.requestedStatement.replaceAll("_", "-")}_${frequencyLabel}_${viewLabel}`,
       sourceRegime: "sec_edgar",
       sectorProfile,
       qualityFlags

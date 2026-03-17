@@ -3,7 +3,8 @@ import {
   UpstreamError,
   type StatementFrequency,
   type NormalizedStatementResponse,
-  type StatementType
+  type StatementType,
+  type StatementView
 } from "../../../core/src";
 import { mapStatement } from "./mapper";
 import type { SecCompanyFacts, SecSubmissions, SecTickerEntry } from "./types";
@@ -53,6 +54,7 @@ export function createSecEdgarClient(options: SecEdgarClientOptions) {
     frequency: StatementFrequency;
     periods: number;
     includeTtm: boolean;
+    view: StatementView;
   }): Promise<NormalizedStatementResponse> {
     const company = await resolveTicker(input.ticker);
     const cik = company.cik_str.toString().padStart(10, "0");
@@ -68,6 +70,7 @@ export function createSecEdgarClient(options: SecEdgarClientOptions) {
       frequency: input.frequency,
       periods: input.periods,
       includeTtm: input.includeTtm,
+      view: input.view,
       companyFacts: facts,
       submissions
     });

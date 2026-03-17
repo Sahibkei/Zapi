@@ -7,6 +7,7 @@ Zapi is a live-pull, zero-persistence fundamentals API. It fetches filing-derive
 - SEC-first adapter using official EDGAR JSON endpoints
 - Annual and quarterly statements for `income_statement`, `balance_sheet`, and `cash_flow`
 - Optional TTM assembly for duration statements
+- `restated` and `as_reported` filing views
 - Normalized JSON and matrix output formats
 - API landing page, OpenAPI docs, and health endpoint
 - Deterministic contract tests with SEC fixtures
@@ -42,12 +43,14 @@ Optional environment variables:
 
 ```bash
 curl "http://localhost:3000/v1/statements/AAPL?statement=income_statement&format=normalized"
+curl "http://localhost:3000/v1/statements/AAPL?statement=income_statement&format=normalized&view=as_reported"
 curl "http://localhost:3000/v1/statements/AAPL?statement=balance_sheet&format=matrix"
 curl "http://localhost:3000/v1/statements/AAPL?statement=income_statement&format=normalized&debug=true"
 curl "http://localhost:3000/v1/statements/JPM?statement=income_statement&frequency=quarterly&format=normalized&periods=4&includeTtm=true"
 ```
 
 Normalized responses are compact by default. Source trace data is returned only when `debug=true`.
+`view=restated` picks the latest filed fact for a period. `view=as_reported` picks the earliest filed fact for that same period.
 
 ## What still needs to be provided
 

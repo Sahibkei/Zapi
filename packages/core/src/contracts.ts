@@ -26,6 +26,7 @@ export type StatementQueryInput = z.input<typeof StatementRequestSchema>;
 export type StatementRequest = z.infer<typeof StatementRequestSchema>;
 export type StatementType = z.infer<typeof StatementTypeSchema>;
 export type StatementFrequency = z.infer<typeof FrequencySchema>;
+export type StatementView = z.infer<typeof StatementViewSchema>;
 export type SectorProfile = z.infer<typeof SectorProfileSchema>;
 
 export interface CanonicalFact {
@@ -35,7 +36,7 @@ export interface CanonicalFact {
   periodType: "annual" | "quarterly" | "ttm";
   periodEnd: string;
   periodLabel: string;
-  view: "restated";
+  view: "restated" | "as_reported";
   value: number | null;
   unit: string;
   signPolicy: "natural_source_sign";
@@ -53,7 +54,7 @@ export interface StatementMeta {
   companyName: string;
   statement: StatementType;
   frequency: StatementFrequency;
-  view: "restated";
+  view: "restated" | "as_reported";
   currency: string;
   fiscalYearEnd: string;
   titleSlug: string;

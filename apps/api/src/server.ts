@@ -159,12 +159,13 @@ function renderLandingPage(): string {
             <li>SEC EDGAR live pull</li>
             <li>Annual and quarterly statements</li>
             <li>Optional TTM on income and cash flow</li>
+            <li><code>restated</code> and <code>as_reported</code> views</li>
             <li><code>normalized</code> and <code>matrix</code> formats</li>
           </ul>
         </article>
         <article class="card">
           <h2>Contract example</h2>
-          <p>Try <code>?statement=income_statement&frequency=quarterly&includeTtm=true</code>. Add <code>&debug=true</code> only when you need source trace facts.</p>
+          <p>Try <code>?statement=income_statement&frequency=quarterly&includeTtm=true</code> or <code>?view=as_reported</code>. Add <code>&debug=true</code> only when you need source trace facts.</p>
         </article>
       </section>
     </main>
@@ -233,6 +234,7 @@ function renderIntegrationPage(): string {
       <section class="panel">
         <h2>Recommended endpoint patterns</h2>
         <pre><code>GET /v1/statements/AAPL?statement=income_statement&frequency=annual&format=normalized&periods=5&includeTtm=true
+GET /v1/statements/AAPL?statement=income_statement&frequency=annual&format=normalized&periods=5&view=as_reported
 GET /v1/statements/JPM?statement=income_statement&frequency=quarterly&format=normalized&periods=4&includeTtm=true
 GET /v1/statements/MSFT?statement=cash_flow&frequency=annual&format=matrix&periods=3&includeTtm=true</code></pre>
       </section>
@@ -250,6 +252,10 @@ statement.periods["2025"].revenue_total;</code></pre>
       <section class="panel">
         <h2>Debug trace</h2>
         <p>Add <code>debug=true</code> only when you need source concepts and accession trace data for inspection or QA.</p>
+      </section>
+      <section class="panel">
+        <h2>View selection</h2>
+        <p><code>view=restated</code> returns the latest filing for a period. <code>view=as_reported</code> returns the earliest filing for that same period, which is useful when later amendments changed the numbers.</p>
       </section>
       <section class="panel">
         <p><a href="/">Back to landing page</a> · <a href="/docs">Open Swagger docs</a></p>

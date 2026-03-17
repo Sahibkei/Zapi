@@ -76,15 +76,65 @@ const syntheticBankSubmissions = {
   filings: { recent: {} }
 } as const;
 
+const syntheticRestatementCompanyFacts = {
+  cik: 555555,
+  entityName: "Restatement Example Inc.",
+  facts: {
+    "us-gaap": {
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {
+        units: {
+          USD: [
+            { start: "2024-01-01", end: "2024-12-31", val: 1000, accn: "orig-rev", fy: 2024, fp: "FY", form: "10-K", filed: "2025-02-01" },
+            { start: "2024-01-01", end: "2024-12-31", val: 1100, accn: "rest-rev", fy: 2024, fp: "FY", form: "10-K/A", filed: "2025-05-01" }
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        units: {
+          USD: [
+            { start: "2024-01-01", end: "2024-12-31", val: 100, accn: "orig-ni", fy: 2024, fp: "FY", form: "10-K", filed: "2025-02-01" },
+            { start: "2024-01-01", end: "2024-12-31", val: 120, accn: "rest-ni", fy: 2024, fp: "FY", form: "10-K/A", filed: "2025-05-01" }
+          ]
+        }
+      },
+      "EarningsPerShareDiluted": {
+        units: {
+          "USD/shares": [
+            { start: "2024-01-01", end: "2024-12-31", val: 1.0, accn: "orig-eps", fy: 2024, fp: "FY", form: "10-K", filed: "2025-02-01" },
+            { start: "2024-01-01", end: "2024-12-31", val: 1.2, accn: "rest-eps", fy: 2024, fp: "FY", form: "10-K/A", filed: "2025-05-01" }
+          ]
+        }
+      },
+      "WeightedAverageNumberOfDilutedSharesOutstanding": {
+        units: {
+          shares: [
+            { start: "2024-01-01", end: "2024-12-31", val: 100, accn: "orig-sh", fy: 2024, fp: "FY", form: "10-K", filed: "2025-02-01" },
+            { start: "2024-01-01", end: "2024-12-31", val: 100, accn: "rest-sh", fy: 2024, fp: "FY", form: "10-K/A", filed: "2025-05-01" }
+          ]
+        }
+      }
+    }
+  }
+} as const;
+
+const syntheticRestatementSubmissions = {
+  name: "Restatement Example Inc.",
+  tickers: ["RST"],
+  sic: "3571",
+  fiscalYearEnd: "1231",
+  filings: { recent: {} }
+} as const;
+
 describe("statement service", () => {
   it("maps annual income statements into the normalized contract", async () => {
     const service = createStatementService({
       secEdgarClient: {
-        getStatement: async ({ ticker, statement, frequency, periods, includeTtm }) =>
+        getStatement: async ({ ticker, statement, frequency, view, periods, includeTtm }) =>
           mapStatement({
             ticker,
             requestedStatement: statement,
             frequency,
+            view,
             periods,
             includeTtm,
             companyFacts,
@@ -116,6 +166,7 @@ describe("statement service", () => {
       ticker: "SYN",
       requestedStatement: "income_statement",
       frequency: "annual",
+      view: "restated",
       periods: 2,
       includeTtm: true,
       companyFacts: syntheticQuarterlyCompanyFacts,
@@ -133,27 +184,36 @@ describe("statement service", () => {
     expect(matrix.footer).toBe("Fiscal year ends in Sep 30 | USD");
   });
 
-  it("rejects unsupported as-reported requests in the MVP", async () => {
+  it("allows as-reported requests through the service layer", async () => {
     const service = createStatementService({
       secEdgarClient: {
-        getStatement: async () => {
-          throw new Error("should not be called");
-        }
+        getStatement: async ({ ticker, statement, frequency, view, periods, includeTtm }) =>
+          mapStatement({
+            ticker,
+            requestedStatement: statement,
+            frequency,
+            view,
+            periods,
+            includeTtm,
+            companyFacts: syntheticRestatementCompanyFacts as never,
+            submissions: syntheticRestatementSubmissions as never
+          })
       }
     });
 
-    await expect(() =>
-      service.getStatement({
-        ticker: "AAPL",
-        statement: "income_statement",
-        frequency: "annual",
-        view: "as_reported",
-        format: "normalized",
-        periods: 3,
-        includeTtm: false,
-        debug: false
-      })
-    ).rejects.toThrow("The SEC-first MVP currently supports only restated output.");
+    const statement = await service.getStatement({
+      ticker: "RST",
+      statement: "income_statement",
+      frequency: "annual",
+      view: "as_reported",
+      format: "normalized",
+      periods: 1,
+      includeTtm: true,
+      debug: false
+    });
+
+    expect(statement.meta.view).toBe("as_reported");
+    expect(statement.periods["2024"].revenue_total).toBe(1000);
   });
 
   it("returns a compact normalized payload by default and exposes facts only in debug mode", () => {
@@ -161,6 +221,7 @@ describe("statement service", () => {
       ticker: "AAPL",
       requestedStatement: "income_statement",
       frequency: "annual",
+      view: "restated",
       periods: 3,
       includeTtm: false,
       companyFacts,
@@ -181,6 +242,7 @@ describe("statement service", () => {
       ticker: "SYN",
       requestedStatement: "income_statement",
       frequency: "quarterly",
+      view: "restated",
       periods: 4,
       includeTtm: true,
       companyFacts: syntheticQuarterlyCompanyFacts,
@@ -203,6 +265,7 @@ describe("statement service", () => {
       ticker: "SYN",
       requestedStatement: "income_statement",
       frequency: "annual",
+      view: "restated",
       periods: 2,
       includeTtm: true,
       companyFacts: syntheticQuarterlyCompanyFacts,
@@ -219,6 +282,7 @@ describe("statement service", () => {
       ticker: "AAPL",
       requestedStatement: "income_statement",
       frequency: "annual",
+      view: "restated",
       periods: 1,
       includeTtm: true,
       companyFacts,
@@ -234,6 +298,7 @@ describe("statement service", () => {
       ticker: "SBK",
       requestedStatement: "income_statement",
       frequency: "quarterly",
+      view: "restated",
       periods: 4,
       includeTtm: true,
       companyFacts: syntheticBankCompanyFacts as never,
@@ -247,5 +312,36 @@ describe("statement service", () => {
     expect(statement.periods.TTM.revenue_total).toBe(84);
     expect(statement.periods.TTM.eps_diluted).toBe(8.5);
     expect(statement.periods.TTM.shares_diluted).toBe(3.15);
+  });
+
+  it("distinguishes restated from as-reported when later filings revise the same period", () => {
+    const restated = mapStatement({
+      ticker: "RST",
+      requestedStatement: "income_statement",
+      frequency: "annual",
+      view: "restated",
+      periods: 1,
+      includeTtm: true,
+      companyFacts: syntheticRestatementCompanyFacts as never,
+      submissions: syntheticRestatementSubmissions as never
+    });
+
+    const asReported = mapStatement({
+      ticker: "RST",
+      requestedStatement: "income_statement",
+      frequency: "annual",
+      view: "as_reported",
+      periods: 1,
+      includeTtm: true,
+      companyFacts: syntheticRestatementCompanyFacts as never,
+      submissions: syntheticRestatementSubmissions as never
+    });
+
+    expect(restated.meta.titleSlug).toBe("RST_income-statement_Annual_Restated");
+    expect(asReported.meta.titleSlug).toBe("RST_income-statement_Annual_AsReported");
+    expect(restated.periods["2024"].revenue_total).toBe(1100);
+    expect(asReported.periods["2024"].revenue_total).toBe(1000);
+    expect(restated.periods.TTM.eps_diluted).toBe(1.2);
+    expect(asReported.periods.TTM.eps_diluted).toBe(1.0);
   });
 });
