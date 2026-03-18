@@ -69,7 +69,9 @@ curl "http://localhost:3000/v1/auth/status"
 Normalized responses are compact by default. Source trace data is returned only when `debug=true`.
 `view=restated` picks the latest filed fact for a period. `view=as_reported` picks the earliest filed fact for that same period.
 `regime=sec_edgar` is live with official SEC data.
-`companies_house`, `edinet`, and `india_placeholder` now return beta non-US statement data via a public fallback source while official filing-parser integrations are still pending.
+`companies_house` now has official registry and filing discovery when `COMPANIES_HOUSE_API_KEY` is configured.
+`edinet` now has official document lookup when `EDINET_API_KEY` is configured.
+Non-US statement values still use the beta fallback source until the official filing parsers are completed.
 
 ## Auth and plans
 

@@ -51,6 +51,9 @@ Write-Host "SEC_USER_AGENT=$env:SEC_USER_AGENT"
 if ($env:COMPANIES_HOUSE_API_KEY) {
   Write-Host "COMPANIES_HOUSE_API_KEY=loaded"
 }
+if ($env:EDINET_API_KEY) {
+  Write-Host "EDINET_API_KEY=loaded"
+}
 Write-Host "Test API key: zapi-local-test"
 
 npm run dev
