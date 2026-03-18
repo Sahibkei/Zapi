@@ -56,6 +56,10 @@ export interface RegionalPublicClientOptions {
   preferredSuffixes?: string[];
   preferredExchanges?: string[];
   provider?: PublicFinancialsProvider;
+  qualityFlags?: string[];
+  asReportedQualityFlags?: string[];
+  capabilityNotes?: string[];
+  requiredEnv?: string[];
 }
 
 type MetricDef = {
@@ -520,12 +524,14 @@ function buildResponse(input: {
   annualRows: ProviderFinancialRow[];
   periodicRows: ProviderFinancialRow[];
   trailingRows: ProviderFinancialRow[];
+  qualityFlags: string[];
+  asReportedQualityFlags: string[];
 }): NormalizedStatementResponse {
   const sectorProfile = inferSector(input.annualRows.length > 0 ? input.annualRows : input.periodicRows);
   const currency = input.resolved.currency;
-  const baseQualityFlags = ["beta_public_fundamentals_provider"];
+  const baseQualityFlags = [...input.qualityFlags];
   if (input.view === "as_reported") {
-    baseQualityFlags.push("as_reported_proxy_not_filing_based");
+    baseQualityFlags.push(...input.asReportedQualityFlags);
   }
 
   const orderedRows = [...input.periodicRows].sort(
@@ -658,6 +664,8 @@ function buildResponse(input: {
 
 export function createRegionalPublicClient(options: RegionalPublicClientOptions) {
   const provider = options.provider ?? createYahooProvider();
+  const baseQualityFlags = options.qualityFlags ?? ["beta_public_fundamentals_provider"];
+  const asReportedQualityFlags = options.asReportedQualityFlags ?? ["as_reported_proxy_not_filing_based"];
 
   async function getStatement(input: {
     identifier: string;
@@ -703,7 +711,9 @@ export function createRegionalPublicClient(options: RegionalPublicClientOptions)
         resolved,
         annualRows,
         periodicRows,
-        trailingRows
+        trailingRows,
+        qualityFlags: baseQualityFlags,
+        asReportedQualityFlags
       });
     } catch (error) {
       if (error instanceof NotFoundError) {
@@ -728,11 +738,11 @@ export function createRegionalPublicClient(options: RegionalPublicClientOptions)
       identifierLabel: options.identifierLabel,
       identifierExample: options.identifierExample,
       statementSupport: "full",
-      notes: [
+      notes: options.capabilityNotes ?? [
         `Beta ${options.label} statement support is enabled via a public market-statement fallback.`,
         `Official ${options.label} filing-parser integration is still pending.`
       ],
-      requiredEnv: []
+      requiredEnv: options.requiredEnv ?? []
     };
   }
 

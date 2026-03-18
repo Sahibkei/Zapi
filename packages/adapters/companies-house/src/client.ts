@@ -33,8 +33,8 @@ export function createCompaniesHouseClient(options: CompaniesHouseClientOptions 
   });
 
   const officialCompanyAliases: Record<string, string> = {
-    HSBA: "00054018",
-    HSBC: "00054018"
+    HSBA: "00617987",
+    HSBC: "00617987"
   };
 
   return {
