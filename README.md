@@ -5,7 +5,7 @@ Zapi is a live-pull, zero-persistence fundamentals API. It fetches filing-derive
 ## MVP scope
 
 - SEC EDGAR live adapter using official EDGAR JSON endpoints
-- Federation scaffolding for Companies House, EDINET, and India
+- Beta non-US adapters for UK, Japan, and India via public market-statement fallback
 - Annual and quarterly statements for `income_statement`, `balance_sheet`, and `cash_flow`
 - Optional TTM assembly for duration statements
 - `restated` and `as_reported` filing views
@@ -43,7 +43,8 @@ Optional environment variables:
 - `PORT`: API port, default `3000`
 - `HOST`: bind host, default `0.0.0.0`
 - `SEC_USER_AGENT`: contact string for SEC requests. Replace the placeholder before production use.
-- `COMPANIES_HOUSE_API_KEY`: required once the UK filing parser is added
+- `COMPANIES_HOUSE_API_KEY`: optional for now; will be required when the official UK filing parser is added
+- `EDINET_API_KEY`: optional for now; will be required when the official Japan filing parser is added
 - `ZAPI_JWT_SECRET`: shared secret for verifying site JWTs
 - `ZAPI_JWT_ISSUER`: expected issuer for site JWTs, default `your-site`
 - `ZAPI_JWT_AUDIENCE`: expected audience for site JWTs, default `zapi-api`
@@ -64,7 +65,8 @@ curl "http://localhost:3000/v1/auth/status"
 
 Normalized responses are compact by default. Source trace data is returned only when `debug=true`.
 `view=restated` picks the latest filed fact for a period. `view=as_reported` picks the earliest filed fact for that same period.
-`regime=sec_edgar` is live. `companies_house` and `edinet` now exist in the federation layer but still return parser-pending responses until their filing parsers are built.
+`regime=sec_edgar` is live with official SEC data.
+`companies_house`, `edinet`, and `india_placeholder` now return beta non-US statement data via a public fallback source while official filing-parser integrations are still pending.
 
 ## Auth and plans
 

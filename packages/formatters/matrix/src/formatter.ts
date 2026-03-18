@@ -1,7 +1,10 @@
 import type { MatrixStatementResponse, NormalizedStatementResponse } from "../../../core/src";
 
 function shouldScaleThousands(unit: string, value: number): boolean {
-  return ["USD", "shares"].includes(unit) && Math.abs(value) >= 1000;
+  return (
+    (unit === "shares" || /^[A-Za-z]{3,4}$/.test(unit)) &&
+    Math.abs(value) >= 1000
+  );
 }
 
 function formatDisplayValue(value: number | null, unit: string): string {
