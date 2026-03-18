@@ -187,16 +187,29 @@ function startDateForRequest(frequency: StatementFrequency, periods: number): st
 }
 
 function inferSector(rows: ProviderFinancialRow[]): SectorProfile {
-  const latest = rows.at(-1);
+  const latest = [...rows].reverse().find((row) =>
+    pickNumber(row, [
+      "totalRevenue",
+      "operatingRevenue",
+      "grossProfit",
+      "operatingIncome",
+      "netIncome",
+      "netIncomeCommonStockholders",
+      "totalDeposits",
+      "netLoan"
+    ]) !== null
+  );
   if (!latest) {
     return "unknown";
   }
 
   if (
-    asNumber(latest.netInterestIncome) !== null ||
-    asNumber(latest.nonInterestIncome) !== null ||
-    asNumber(latest.totalDeposits) !== null ||
-    asNumber(latest.netLoan) !== null
+    pickNumber(latest, ["totalDeposits", "netLoan"]) !== null ||
+    (
+      pickNumber(latest, ["netInterestIncome"]) !== null &&
+      pickNumber(latest, ["nonInterestIncome"]) !== null &&
+      pickNumber(latest, ["grossProfit", "costOfRevenue"]) === null
+    )
   ) {
     return "bank";
   }
@@ -204,11 +217,39 @@ function inferSector(rows: ProviderFinancialRow[]): SectorProfile {
   return "industrial";
 }
 
+function hasTemplateValues(
+  row: ProviderFinancialRow,
+  template: MetricDef[],
+  currency: string
+): boolean {
+  return template.some((definition) =>
+    definition.rowKind === "metric" &&
+    definition.getValue !== undefined &&
+    definition.getValue(row, currency) !== null
+  );
+}
+
+function trimLeadingEmptyPeriods(
+  rows: ProviderFinancialRow[],
+  template: MetricDef[],
+  currency: string
+): ProviderFinancialRow[] {
+  let startIndex = 0;
+  while (startIndex < rows.length && !hasTemplateValues(rows[startIndex], template, currency)) {
+    startIndex += 1;
+  }
+  return rows.slice(startIndex);
+}
+
 function incomeTemplate(sector: SectorProfile): MetricDef[] {
   if (sector === "bank") {
     return [
       { metricCode: "section_revenue", label: "Revenue", depth: 0, unit: "", rowKind: "section" },
+      { metricCode: "interest_income", label: "Interest Income", depth: 1, unit: "USD", rowKind: "metric", sourceConcept: "interestIncome", getValue: (row) => pickNumber(row, ["interestIncome"]) },
+      { metricCode: "interest_expense", label: "Interest Expense", depth: 1, unit: "USD", rowKind: "metric", sourceConcept: "interestExpense", getValue: (row) => negative(row, ["interestExpense"]) },
       { metricCode: "interest_income_net", label: "Net Interest Income", depth: 1, unit: "USD", rowKind: "metric", sourceConcept: "netInterestIncome", getValue: (row) => pickNumber(row, ["netInterestIncome"]) },
+      { metricCode: "fees_commission_income", label: "Fee and Commission Income", depth: 1, unit: "USD", rowKind: "metric", sourceConcept: "feesAndCommissions", getValue: (row) => pickNumber(row, ["feesAndCommissions", "feesandCommissionIncome"]) },
+      { metricCode: "fees_commission_expense", label: "Fee and Commission Expense", depth: 1, unit: "USD", rowKind: "metric", sourceConcept: "feesandCommissionExpense", getValue: (row) => negative(row, ["feesandCommissionExpense"]) },
       { metricCode: "noninterest_income", label: "Noninterest Income", depth: 1, unit: "USD", rowKind: "metric", sourceConcept: "nonInterestIncome", getValue: (row) => pickNumber(row, ["nonInterestIncome"]) },
       {
         metricCode: "revenue_total",
@@ -229,7 +270,9 @@ function incomeTemplate(sector: SectorProfile): MetricDef[] {
           })
       },
       { metricCode: "operating_expenses", label: "Operating Expenses", depth: 0, unit: "USD", rowKind: "metric", sourceConcept: "operatingExpense", getValue: (row) => negative(row, ["operatingExpense"]) },
+      { metricCode: "selling_general_admin", label: "Selling, General and Administrative Expenses", depth: 1, unit: "USD", rowKind: "metric", sourceConcept: "sellingGeneralAndAdministration", getValue: (row) => negative(row, ["sellingGeneralAndAdministration", "generalAndAdministrativeExpense"]) },
       { metricCode: "pretax_income", label: "Pretax Income", depth: 0, unit: "USD", rowKind: "metric", sourceConcept: "pretaxIncome", getValue: (row) => pickNumber(row, ["pretaxIncome"]) },
+      { metricCode: "income_tax_provision", label: "Provision for Income Tax", depth: 0, unit: "USD", rowKind: "metric", sourceConcept: "taxProvision", getValue: (row) => negative(row, ["taxProvision"]) },
       {
         metricCode: "net_income",
         label: "Net Income",
@@ -239,7 +282,9 @@ function incomeTemplate(sector: SectorProfile): MetricDef[] {
         sourceConcept: "netIncome",
         getValue: (row) => pickNumber(row, ["netIncomeCommonStockholders", "netIncome", "netIncomeFromContinuingOperationNetMinorityInterest"])
       },
+      { metricCode: "eps_basic", label: "Basic EPS", depth: 0, unit: "USD/shares", rowKind: "metric", sourceConcept: "basicEPS", getValue: (row) => pickNumber(row, ["basicEPS"]) },
       { metricCode: "eps_diluted", label: "Diluted EPS", depth: 0, unit: "USD/shares", rowKind: "metric", sourceConcept: "dilutedEPS", getValue: (row) => pickNumber(row, ["dilutedEPS"]) },
+      { metricCode: "shares_basic", label: "Basic Weighted Average Shares Outstanding", depth: 0, unit: "shares", rowKind: "metric", sourceConcept: "basicAverageShares", getValue: (row) => pickNumber(row, ["basicAverageShares"]) },
       { metricCode: "shares_diluted", label: "Diluted Weighted Average Shares Outstanding", depth: 0, unit: "shares", rowKind: "metric", sourceConcept: "dilutedAverageShares", getValue: (row) => pickNumber(row, ["dilutedAverageShares"]) }
     ];
   }
@@ -486,7 +531,12 @@ function buildResponse(input: {
   const orderedRows = [...input.periodicRows].sort(
     (left, right) => left.date.getTime() - right.date.getTime()
   );
-  const selectedRows = orderedRows.slice(-input.periods);
+  const template = selectTemplate(input.requestedStatement, sectorProfile, currency);
+  const selectedRows = trimLeadingEmptyPeriods(
+    orderedRows.slice(-input.periods),
+    template,
+    currency
+  );
   const columns = selectedRows.map((row) =>
     input.frequency === "annual" ? annualLabel(row.date) : quarterlyLabel(row.date)
   );
@@ -502,7 +552,6 @@ function buildResponse(input: {
     periodEnds.push(trailingRow.date.toISOString().slice(0, 10));
   }
 
-  const template = selectTemplate(input.requestedStatement, sectorProfile, currency);
   const hierarchyPaths = hierarchyPathsForTemplate(template);
 
   const rows: StatementRow[] = template.map((definition) => {

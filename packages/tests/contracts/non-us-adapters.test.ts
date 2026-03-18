@@ -54,6 +54,9 @@ const annualRows = {
   ],
   "7203.T": [
     {
+      date: new Date("2021-03-31")
+    },
+    {
       date: new Date("2024-03-31"),
       totalRevenue: 45000000000000,
       grossProfit: 9000000000000,
@@ -103,6 +106,9 @@ const annualRows = {
     }
   ],
   "RELIANCE.NS": [
+    {
+      date: new Date("2021-03-31")
+    },
     {
       date: new Date("2024-03-31"),
       totalRevenue: 9000000000000,
@@ -204,19 +210,23 @@ describe("non-US adapters", () => {
     expect(statement.periods["2025"].revenue_total).toBe(66224000000);
   });
 
-  it("builds Japan industrial statements and formats JPY in thousands", async () => {
+  it("builds Japan industrial statements, trims empty leading periods, and formats JPY in thousands", async () => {
     const client = createEdinetClient({ provider });
     const statement = await client.getStatement({
       identifier: "TOYOTA",
       statement: "income_statement",
       frequency: "annual",
-      periods: 2,
+      periods: 5,
       includeTtm: true,
       view: "restated"
     });
     const matrix = formatMatrixStatement(statement);
 
     expect(statement.meta.currency).toBe("JPY");
+    expect(statement.meta.sectorProfile).toBe("industrial");
+    expect(statement.columns).toEqual(["2024", "2025"]);
+    expect(statement.rows.some((row) => row.metricCode === "interest_income_net")).toBe(false);
+    expect(statement.rows.some((row) => row.metricCode === "gross_profit")).toBe(true);
     expect(statement.periods["2025"].revenue_total).toBe(48036704000000);
     expect(matrix.rows.find((row) => row.metric_code === "revenue_total")?.display_values[1]).toBe("48,036,704,000");
   });
