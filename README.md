@@ -50,6 +50,9 @@ Optional environment variables:
 - `ZAPI_JWT_AUDIENCE`: expected audience for site JWTs, default `zapi-api`
 - `ZAPI_SERVICE_KEYS`: JSON object of backend service keys and assigned plans
 
+For local development with VS Code, you can paste secrets into `.env.local`.
+`npm run dev:test` now loads `.env.local` automatically before starting the API.
+
 ## Example requests
 
 ```bash
