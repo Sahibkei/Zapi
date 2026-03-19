@@ -22,6 +22,14 @@ function formatDisplayValue(value: number | null, unit: string): string {
   return scaledValue < 0 ? `(${formatted})` : formatted;
 }
 
+function buildFooter(statement: NormalizedStatementResponse): string {
+  const base = `Fiscal year ends in ${statement.meta.fiscalYearEnd} | ${statement.meta.currency}`;
+  if (statement.meta.historyCoverage === "partial") {
+    return `${base} | ${statement.meta.returnedPeriods}/${statement.meta.requestedPeriods} periods available`;
+  }
+  return base;
+}
+
 export function formatMatrixStatement(
   statement: NormalizedStatementResponse
 ): MatrixStatementResponse {
@@ -34,6 +42,10 @@ export function formatMatrixStatement(
       currency: statement.meta.currency,
       fiscalYearEnd: statement.meta.fiscalYearEnd,
       titleSlug: statement.meta.titleSlug,
+      requestedPeriods: statement.meta.requestedPeriods,
+      returnedPeriods: statement.meta.returnedPeriods,
+      historyCoverage: statement.meta.historyCoverage,
+      historyNote: statement.meta.historyNote,
       displayScale: "thousands_when_large",
       negativeStyle: "parentheses"
     },
@@ -47,7 +59,7 @@ export function formatMatrixStatement(
       values: row.values,
       display_values: row.values.map((value) => formatDisplayValue(value, row.unit))
     })),
-    footer: `Fiscal year ends in ${statement.meta.fiscalYearEnd} | ${statement.meta.currency}`
+    footer: buildFooter(statement)
   };
 }
 

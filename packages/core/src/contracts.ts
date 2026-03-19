@@ -68,6 +68,10 @@ export interface StatementMeta {
   titleSlug: string;
   sourceRegime: StatementSourceRegime;
   sectorProfile: SectorProfile;
+  requestedPeriods: number;
+  returnedPeriods: number;
+  historyCoverage: "full" | "partial";
+  historyNote?: string;
   qualityFlags: string[];
 }
 

@@ -553,6 +553,11 @@ function buildResponse(input: {
     input.frequency === "annual" ? annualLabel(row.date) : quarterlyLabel(row.date)
   );
   const periodEnds = selectedRows.map((row) => row.date.toISOString().slice(0, 10));
+  const returnedPeriods = selectedRows.length;
+  const historyCoverage = returnedPeriods < input.periods ? "partial" : "full";
+  const historyNote = historyCoverage === "partial"
+    ? `Returned ${returnedPeriods} of ${input.periods} requested ${input.frequency} periods from ${input.regime}.`
+    : undefined;
 
   const trailingRow =
     input.includeTtm && input.frequency === "quarterly" && input.requestedStatement !== "balance_sheet"
@@ -659,6 +664,10 @@ function buildResponse(input: {
       titleSlug: `${input.identifier.trim().toUpperCase()}_${titleStatementSlug(input.requestedStatement)}_${input.frequency === "annual" ? "Annual" : "Quarterly"}_${titleViewSlug(input.view)}`,
       sourceRegime: input.regime,
       sectorProfile,
+      requestedPeriods: input.periods,
+      returnedPeriods,
+      historyCoverage,
+      historyNote,
       qualityFlags: baseQualityFlags
     },
     columns,

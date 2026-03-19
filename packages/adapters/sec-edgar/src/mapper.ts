@@ -2419,6 +2419,13 @@ export function mapStatement(input: {
   const frequencyLabel = input.frequency === "annual" ? "Annual" : "Quarterly";
   const viewLabel = input.view === "restated" ? "Restated" : "AsReported";
   const qualityFlags: string[] = [];
+  const returnedPeriods = input.frequency === "annual"
+    ? outputColumns.filter((column) => column !== "TTM").length
+    : outputColumns.filter((column) => column !== "TTM").length;
+  const historyCoverage = returnedPeriods < input.periods ? "partial" : "full";
+  const historyNote = historyCoverage === "partial"
+    ? `Returned ${returnedPeriods} of ${input.periods} requested ${input.frequency} periods from sec_edgar.`
+    : undefined;
 
   if (
     rows.some((row) => row.rowKind === "metric" && row.qualityFlags.length > 0)
@@ -2442,6 +2449,10 @@ export function mapStatement(input: {
       titleSlug: `${input.ticker}_${input.requestedStatement.replaceAll("_", "-")}_${frequencyLabel}_${viewLabel}`,
       sourceRegime: "sec_edgar",
       sectorProfile,
+      requestedPeriods: input.periods,
+      returnedPeriods,
+      historyCoverage,
+      historyNote,
       qualityFlags
     },
     columns: outputColumns,

@@ -224,11 +224,16 @@ describe("non-US adapters", () => {
 
     expect(statement.meta.currency).toBe("JPY");
     expect(statement.meta.sectorProfile).toBe("industrial");
+    expect(statement.meta.requestedPeriods).toBe(5);
+    expect(statement.meta.returnedPeriods).toBe(2);
+    expect(statement.meta.historyCoverage).toBe("partial");
+    expect(statement.meta.historyNote).toContain("Returned 2 of 5 requested annual periods");
     expect(statement.columns).toEqual(["2024", "2025"]);
     expect(statement.rows.some((row) => row.metricCode === "interest_income_net")).toBe(false);
     expect(statement.rows.some((row) => row.metricCode === "gross_profit")).toBe(true);
     expect(statement.periods["2025"].revenue_total).toBe(48036704000000);
     expect(matrix.rows.find((row) => row.metric_code === "revenue_total")?.display_values[1]).toBe("48,036,704,000");
+    expect(matrix.footer).toBe("Fiscal year ends in Mar 31 | JPY | 2/5 periods available");
   });
 
   it("builds India statements and keeps beta quality flags visible", async () => {

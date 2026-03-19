@@ -172,6 +172,9 @@ describe("statement service", () => {
     expect(result.periods["2025"].revenue_total).toBe(416161000000);
     expect(result.periods["2024"].eps_diluted).toBe(6.08);
     expect(result.meta.currency).toBe("USD");
+    expect(result.meta.requestedPeriods).toBe(3);
+    expect(result.meta.returnedPeriods).toBe(3);
+    expect(result.meta.historyCoverage).toBe("full");
   });
 
   it("formats matrix output with deterministic footer metadata", () => {
