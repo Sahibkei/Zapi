@@ -67,7 +67,10 @@ function createAnnualXbrl(input: {
   <in-bse-fin:OtherExpenses contextRef="FourD">1400000000000</in-bse-fin:OtherExpenses>
   <in-bse-fin:ProfitBeforeTax contextRef="FourD">${input.pretaxIncome}</in-bse-fin:ProfitBeforeTax>
   <in-bse-fin:TaxExpense contextRef="FourD">${input.taxExpense}</in-bse-fin:TaxExpense>
+  <in-bse-fin:CurrentTax contextRef="FourD">${Math.round(input.taxExpense * 0.8)}</in-bse-fin:CurrentTax>
+  <in-bse-fin:DeferredTax contextRef="FourD">${Math.round(input.taxExpense * 0.2)}</in-bse-fin:DeferredTax>
   <in-bse-fin:ProfitOrLossAttributableToOwnersOfParent contextRef="FourD">${input.netIncome}</in-bse-fin:ProfitOrLossAttributableToOwnersOfParent>
+  <in-bse-fin:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod contextRef="FourD">12000000000</in-bse-fin:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod>
   <in-bse-fin:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="FourD">${input.dilutedEps}</in-bse-fin:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
   <in-bse-fin:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="FourD">${input.dilutedEps}</in-bse-fin:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
   <in-bse-fin:PaidUpValueOfEquityShareCapital contextRef="FourD">${input.equityCapital}</in-bse-fin:PaidUpValueOfEquityShareCapital>
@@ -113,6 +116,38 @@ function createAnnualXbrl(input: {
   <in-bse-fin:IncreaseDecreaseInCashAndCashEquivalents contextRef="FourD">${input.changeInCash}</in-bse-fin:IncreaseDecreaseInCashAndCashEquivalents>
   <in-bse-fin:CashAndCashEquivalentsCashFlowStatement contextRef="FourD">${input.beginningCash}</in-bse-fin:CashAndCashEquivalentsCashFlowStatement>
   <in-bse-fin:CashAndCashEquivalentsCashFlowStatement contextRef="FourD">${input.endingCash}</in-bse-fin:CashAndCashEquivalentsCashFlowStatement>
+</xbrli:xbrl>`;
+}
+
+function createLegacyBalanceXbrl(input: {
+  yearEnd: string;
+  startDate: string;
+  revenue: number;
+  pretaxIncome: number;
+  netIncome: number;
+  totalAssets: number;
+  equityCapital: number;
+}): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<xbrli:xbrl xmlns:in-bse-fin="http://www.bseindia.com/xbrl/fin/2019-03-31/in-bse-fin" xmlns:xbrli="http://www.xbrl.org/2003/instance">
+  <xbrli:context id="FourD">
+    <xbrli:entity><xbrli:identifier scheme="http://www.nseindia.com/NSESymbol">RELIANCE</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:startDate>${input.startDate}</xbrli:startDate><xbrli:endDate>${input.yearEnd}</xbrli:endDate></xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="OneI">
+    <xbrli:entity><xbrli:identifier scheme="http://www.nseindia.com/NSESymbol">RELIANCE</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>${input.yearEnd}</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <in-bse-fin:DateOfEndOfReportingPeriod contextRef="FourD">${input.yearEnd}</in-bse-fin:DateOfEndOfReportingPeriod>
+  <in-bse-fin:Income contextRef="FourD">${input.revenue}</in-bse-fin:Income>
+  <in-bse-fin:ProfitBeforeTax contextRef="FourD">${input.pretaxIncome}</in-bse-fin:ProfitBeforeTax>
+  <in-bse-fin:ProfitOrLossAttributableToOwnersOfParent contextRef="FourD">${input.netIncome}</in-bse-fin:ProfitOrLossAttributableToOwnersOfParent>
+  <in-bse-fin:PaidUpValueOfEquityShareCapital contextRef="FourD">${input.equityCapital}</in-bse-fin:PaidUpValueOfEquityShareCapital>
+  <in-bse-fin:FaceValueOfEquityShareCapital contextRef="FourD">10</in-bse-fin:FaceValueOfEquityShareCapital>
+  <in-bse-fin:NetSegmentAssets contextRef="OneI">${input.totalAssets}</in-bse-fin:NetSegmentAssets>
+  <in-bse-fin:SegmentLiabilities contextRef="OneI">660330000000</in-bse-fin:SegmentLiabilities>
+  <in-bse-fin:UnAllocableLiabilities contextRef="OneI">${input.totalAssets - 660330000000}</in-bse-fin:UnAllocableLiabilities>
+  <in-bse-fin:NetSegmentLiabilities contextRef="OneI">${input.totalAssets}</in-bse-fin:NetSegmentLiabilities>
 </xbrli:xbrl>`;
 }
 
@@ -172,8 +207,30 @@ describe("india official api", () => {
     expect(row.totalRevenue).toBe(9796930000000);
     expect(row.netIncomeCommonStockholders).toBe(696480000000);
     expect(row.totalAssets).toBe(19501210000000);
+    expect(row.employeeBenefitExpense).toBe(260000000000);
+    expect(row.financeCosts).toBe(230000000000);
+    expect(row.currentTax).toBe(201840000000);
+    expect(row.deferredTax).toBe(50460000000);
+    expect(row.equityMethodIncome).toBe(12000000000);
     expect(row.operatingCashFlow).toBe(1787030000000);
     expect(row.purchaseOfPPE).toBe(-1528830000000);
+  });
+
+  it("falls back to legacy balance-sheet tags for older NSE XBRL", () => {
+    const api = createIndiaOfficialApi();
+    const row = api.parseAnnualXbrl(createLegacyBalanceXbrl({
+      startDate: "2021-04-01",
+      yearEnd: "2022-03-31",
+      revenue: 4592470000000,
+      pretaxIncome: 467860000000,
+      netIncome: 390840000000,
+      totalAssets: 8955620000000,
+      equityCapital: 67650000000
+    }));
+
+    expect(row.totalAssets).toBe(8955620000000);
+    expect(row.totalRevenue).toBe(4592470000000);
+    expect(row.netIncomeCommonStockholders).toBe(390840000000);
   });
 
   it("builds annual India statements from official NSE XBRL", async () => {

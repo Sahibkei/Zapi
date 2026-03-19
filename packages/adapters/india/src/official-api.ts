@@ -164,6 +164,9 @@ function parseAnnualXbrl(xml: string): IndiaOfficialFinancialRow {
   const depreciation = parseNumber(extractFirstTagValue(xml, "DepreciationDepletionAndAmortisationExpense", "FourD"));
   const employeeBenefitExpense = parseNumber(extractFirstTagValue(xml, "EmployeeBenefitExpense", "FourD"));
   const otherExpenses = parseNumber(extractFirstTagValue(xml, "OtherExpenses", "FourD"));
+  const currentTax = parseNumber(extractFirstTagValue(xml, "CurrentTax", "FourD"));
+  const deferredTax = parseNumber(extractFirstTagValue(xml, "DeferredTax", "FourD"));
+  const equityMethodIncome = parseNumber(extractFirstTagValue(xml, "ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod", "FourD"));
   const operatingExpense = subtract(expenses, costOfRevenue);
   const pretaxIncome = parseNumber(extractFirstTagValue(xml, "ProfitBeforeTax", "FourD"));
   const operatingIncome =
@@ -184,6 +187,7 @@ function parseAnnualXbrl(xml: string): IndiaOfficialFinancialRow {
     ? equityShareCapital / faceValue
     : null;
   const cashFlowBalances = extractTagValues(xml, "CashAndCashEquivalentsCashFlowStatement", "FourD").map(parseNumber);
+  const legacyNetSegmentAssets = parseNumber(extractFirstTagValue(xml, "NetSegmentAssets", "OneI"));
 
   const receivablesChange = sum(
     parseNumber(extractFirstTagValue(xml, "AdjustmentsForDecreaseIncreaseInTradeReceivablesCurrent", "FourD")),
@@ -216,20 +220,26 @@ function parseAnnualXbrl(xml: string): IndiaOfficialFinancialRow {
     costOfRevenue,
     operatingExpense,
     sellingGeneralAndAdministration: otherExpenses,
+    employeeBenefitExpense,
+    otherOperatingExpenses: otherExpenses,
     researchAndDevelopment: null,
     operatingIncome,
+    financeCosts,
     otherNonOperatingIncomeExpenses: otherIncome !== null || financeCosts !== null
       ? sum(otherIncome, negate(financeCosts))
       : null,
+    equityMethodIncome,
     pretaxIncome,
     taxProvision: parseNumber(extractFirstTagValue(xml, "TaxExpense", "FourD")),
+    currentTax,
+    deferredTax,
     netIncome,
     netIncomeCommonStockholders: netIncome,
     basicEPS: basicEps,
     dilutedEPS: dilutedEps,
     basicAverageShares: shareCount,
     dilutedAverageShares: shareCount,
-    totalAssets: parseNumber(extractFirstTagValue(xml, "Assets", "OneI")),
+    totalAssets: parseNumber(extractFirstTagValue(xml, "Assets", "OneI")) ?? legacyNetSegmentAssets,
     currentAssets: parseNumber(extractFirstTagValue(xml, "CurrentAssets", "OneI")),
     cashCashEquivalentsAndShortTermInvestments: sum(
       parseNumber(extractFirstTagValue(xml, "CashAndCashEquivalents", "OneI")),
