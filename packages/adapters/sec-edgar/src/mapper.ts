@@ -75,7 +75,23 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       statement: "income_statement",
       kind: "duration",
       quarterlyStrategy: "discrete_or_subtract",
-      ttmStrategy: "sum"
+      ttmStrategy: "sum",
+      deriveDependencies: ["revenue_total", "cost_of_revenue", "operating_income", "operating_income_expenses"],
+      derive: (values) => {
+        const revenue = values.revenue_total;
+        const costOfRevenue = values.cost_of_revenue;
+        if (revenue !== null && costOfRevenue !== null) {
+          return revenue + costOfRevenue;
+        }
+
+        const operatingIncome = values.operating_income;
+        const operatingExpenses = values.operating_income_expenses;
+        if (operatingIncome === null || operatingExpenses === null) {
+          return null;
+        }
+
+        return operatingIncome - operatingExpenses;
+      }
     },
     {
       metricCode: "revenue_total",
@@ -113,11 +129,15 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       concepts: [
         "CostOfGoodsSold",
         "CostOfSales",
-        "CostOfRevenue"
+        "CostOfRevenue",
+        "CostOfGoodsSoldExcludingDepreciationDepletionAndAmortization",
+        "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization"
       ],
       statement: "income_statement",
-      kind: "derived",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value),
       deriveDependencies: ["gross_profit", "revenue_total"],
       derive: (values) => {
         const grossProfit = values.gross_profit;
@@ -150,15 +170,35 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       statement: "income_statement",
       kind: "derived",
       ttmStrategy: "sum",
-      deriveDependencies: ["gross_profit", "operating_income"],
+      deriveDependencies: [
+        "selling_general_and_administrative_expenses",
+        "research_and_development_expenses",
+        "depreciation_depletion_and_amortization_expense",
+        "restructuring_and_other_charges_net"
+      ],
       derive: (values) => {
-        const grossProfit = values.gross_profit;
-        const operatingIncome = values.operating_income;
-        if (grossProfit === null || operatingIncome === null) {
+        const sellingGeneralAndAdministrative =
+          values.selling_general_and_administrative_expenses;
+        const researchAndDevelopment = values.research_and_development_expenses;
+        const depreciationDepletionAndAmortization =
+          values.depreciation_depletion_and_amortization_expense;
+        const restructuringAndOtherCharges =
+          values.restructuring_and_other_charges_net;
+        if (
+          sellingGeneralAndAdministrative === null &&
+          researchAndDevelopment === null &&
+          depreciationDepletionAndAmortization === null &&
+          restructuringAndOtherCharges === null
+        ) {
           return null;
         }
 
-        return operatingIncome - grossProfit;
+        return (
+          (sellingGeneralAndAdministrative ?? 0) +
+          (researchAndDevelopment ?? 0) +
+          (depreciationDepletionAndAmortization ?? 0) +
+          (restructuringAndOtherCharges ?? 0)
+        );
       }
     },
     {
@@ -195,6 +235,43 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       valueTransform: (value) => -Math.abs(value)
     },
     {
+      metricCode: "depreciation_depletion_and_amortization_expense",
+      label: "Provision for Depreciation, Depletion, and Amortization",
+      hierarchyPath: [
+        "Operating Income/Expenses",
+        "Provision for Depreciation, Depletion, and Amortization"
+      ],
+      unit: "USD",
+      concepts: [
+        "DepreciationDepletionAndAmortization",
+        "OtherDepreciationAndAmortization"
+      ],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
+      metricCode: "restructuring_and_other_charges_net",
+      label: "Restructuring and Other Charges, Net",
+      hierarchyPath: [
+        "Operating Income/Expenses",
+        "Restructuring and Other Charges, Net"
+      ],
+      unit: "USD",
+      concepts: [
+        "RestructuringCharges",
+        "OtherRestructuringCosts",
+        "BusinessExitCosts1"
+      ],
+      statement: "income_statement",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
+      ttmStrategy: "sum",
+      valueTransform: (value) => -Math.abs(value)
+    },
+    {
       metricCode: "total_operating_profit_loss",
       label: "Total Operating Profit/Loss",
       hierarchyPath: ["Total Operating Profit/Loss"],
@@ -215,7 +292,17 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       statement: "income_statement",
       kind: "duration",
       quarterlyStrategy: "discrete_or_subtract",
-      ttmStrategy: "sum"
+      ttmStrategy: "sum",
+      deriveDependencies: ["pretax_income", "non_operating_income_expense_total"],
+      derive: (values) => {
+        const pretaxIncome = values.pretax_income;
+        const nonOperatingIncomeExpense = values.non_operating_income_expense_total;
+        if (pretaxIncome === null || nonOperatingIncomeExpense === null) {
+          return null;
+        }
+
+        return pretaxIncome - nonOperatingIncomeExpense;
+      }
     },
     {
       metricCode: "non_operating_income_expense_total",
@@ -224,7 +311,8 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       unit: "USD",
       concepts: ["NonoperatingIncomeExpense", "OtherNonoperatingIncomeExpense"],
       statement: "income_statement",
-      kind: "derived",
+      kind: "duration",
+      quarterlyStrategy: "discrete_or_subtract",
       ttmStrategy: "sum",
       deriveDependencies: ["pretax_income", "operating_income"],
       derive: (values) => {
@@ -256,7 +344,11 @@ const DEFAULT_STATEMENT_DEFINITIONS: Record<StatementType, StatementMetricDefini
       label: "Pretax Income",
       hierarchyPath: ["Pretax Income"],
       unit: "USD",
-      concepts: ["IncomeBeforeTaxExpenseBenefit", "PretaxIncome"],
+      concepts: [
+        "IncomeBeforeTaxExpenseBenefit",
+        "PretaxIncome",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"
+      ],
       statement: "income_statement",
       kind: "duration",
       quarterlyStrategy: "discrete_or_subtract",
@@ -2355,13 +2447,19 @@ export function mapStatement(input: {
     currency = metricCurrency;
   }
 
-  const derivedDefinitions = definitions.filter((item) => item.kind === "derived");
-  for (let pass = 0; pass < derivedDefinitions.length; pass += 1) {
+  const computedDefinitions = definitions.filter((item) => item.derive);
+  for (let pass = 0; pass < computedDefinitions.length; pass += 1) {
     let changed = false;
 
-    for (const definition of derivedDefinitions) {
+    for (const definition of computedDefinitions) {
+      const previousValues = metricValues[definition.metricCode] ?? {};
       const nextValues = Object.fromEntries(
         outputColumns.map((column) => {
+          const existingValue = previousValues[column] ?? null;
+          if (existingValue !== null) {
+            return [column, existingValue];
+          }
+
           const inputs = Object.fromEntries(
             (definition.deriveDependencies ?? []).map((dependency) => [
               dependency,
@@ -2372,7 +2470,6 @@ export function mapStatement(input: {
         })
       );
 
-      const previousValues = metricValues[definition.metricCode];
       metricValues[definition.metricCode] = nextValues;
 
       if (JSON.stringify(previousValues) !== JSON.stringify(nextValues)) {
@@ -2385,13 +2482,19 @@ export function mapStatement(input: {
     }
   }
 
-  for (const definition of derivedDefinitions) {
+  const factKeys = new Set(
+    facts.map((fact) => `${fact.metricCode}:${fact.periodLabel}`)
+  );
+
+  for (const definition of computedDefinitions) {
     for (const column of outputColumns) {
       const value = metricValues[definition.metricCode]?.[column] ?? null;
-      if (value === null) {
+      const factKey = `${definition.metricCode}:${column}`;
+      if (value === null || factKeys.has(factKey)) {
         continue;
       }
 
+      factKeys.add(factKey);
       facts.push({
         metricCode: definition.metricCode,
         displayLabel: definition.label,
