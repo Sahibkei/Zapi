@@ -1,4 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "outputDirectory": null
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/router"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/api/router"
+    }
+  ]
 }
