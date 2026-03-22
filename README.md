@@ -46,7 +46,7 @@ Optional environment variables:
 - `COMPANIES_HOUSE_API_KEY`: optional for now; will be required when the official UK filing parser is added
 - `EDINET_API_KEY`: optional for now; will be required when the official Japan filing parser is added
 - `ZAPI_JWT_SECRET`: shared secret for verifying site JWTs
-- `ZAPI_JWT_ISSUER`: expected issuer for site JWTs, default `your-site`
+- `ZAPI_JWT_ISSUER`: expected issuer for site JWTs, default `zedxe`
 - `ZAPI_JWT_AUDIENCE`: expected audience for site JWTs, default `zapi-api`
 - `ZAPI_SERVICE_KEYS`: JSON object of backend service keys and assigned plans
 
@@ -76,9 +76,10 @@ Non-US statement values still use the beta fallback source until the official fi
 ## Auth and plans
 
 - `public`: anonymous access, SEC only, `60` requests/hour
-- `free`: signed site user, SEC only, `250` requests/hour
-- `pro`: paid plan, SEC plus UK and Japan access, `2500` requests/hour
-- `scale`: highest plan, all configured regimes, `10000` requests/hour
+- `free`: signed site user, SEC only, `100` requests/hour
+- `plus`: paid US-only plan, SEC only, `500` requests/hour
+- `pro`: full API access across configured regimes, `2000` requests/hour
+- `scale`: internal highest-volume service plan, all configured regimes, `10000` requests/hour
 
 Bearer tokens should be HS256 JWTs minted by your site backend. Required claims are `sub`, `plan`, `iss`, `aud`, and `exp`.
 

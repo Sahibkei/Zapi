@@ -6,7 +6,7 @@ import {
 } from "./errors";
 import type { StatementSourceRegime } from "./contracts";
 
-export type PlanId = "public" | "free" | "pro" | "scale";
+export type PlanId = "public" | "free" | "plus" | "pro" | "scale";
 export type AuthMode = "anonymous" | "site_jwt" | "service_key";
 
 export interface PlanDefinition {
@@ -65,23 +65,30 @@ export const PLAN_DEFINITIONS: Record<PlanId, PlanDefinition> = {
   free: {
     id: "free",
     label: "Free",
-    requestsPerHour: 250,
+    requestsPerHour: 100,
     regimes: ["sec_edgar"],
-    features: ["Signed site user", "US SEC coverage", "Higher hourly cap"]
+    features: ["Signed site user", "US SEC coverage", "Last 5 years historical depth"]
+  },
+  plus: {
+    id: "plus",
+    label: "Plus",
+    requestsPerHour: 500,
+    regimes: ["sec_edgar"],
+    features: ["Paid US plan", "US SEC coverage", "Excel plugin coming soon"]
   },
   pro: {
     id: "pro",
     label: "Pro",
-    requestsPerHour: 2500,
-    regimes: ["sec_edgar", "companies_house", "edinet"],
-    features: ["Higher hourly cap", "UK and Japan region access", "Priority support ready"]
+    requestsPerHour: 2000,
+    regimes: ["sec_edgar", "companies_house", "edinet", "india_placeholder"],
+    features: ["Full API access", "All configured regimes", "Higher production cap"]
   },
   scale: {
     id: "scale",
     label: "Scale",
     requestsPerHour: 10000,
     regimes: ["sec_edgar", "companies_house", "edinet", "india_placeholder"],
-    features: ["Highest hourly cap", "All configured regions", "Reserved future region access"]
+    features: ["Internal service access", "Highest hourly cap", "All configured regions"]
   }
 };
 
