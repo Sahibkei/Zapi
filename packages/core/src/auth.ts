@@ -54,6 +54,11 @@ interface JwtPayload {
   exp?: number;
 }
 
+/**
+ * Canonical auth plan matrix enforced by bearer-token and service-key traffic.
+ * Signed user plans are free, plus, and pro. Scale remains available for
+ * internal service-key workloads that need a separate high-volume tier.
+ */
 export const PLAN_DEFINITIONS: Record<PlanId, PlanDefinition> = {
   public: {
     id: "public",
@@ -166,6 +171,9 @@ function resolvePlan(planId: PlanId | undefined): PlanDefinition {
   return PLAN_DEFINITIONS[planId ?? "free"];
 }
 
+/**
+ * Parses the JSON-encoded service-key map into normalized auth resolver entries.
+ */
 export function parseServiceKeys(rawValue: string | undefined): AuthResolverOptions["serviceKeys"] {
   if (!rawValue) {
     return {};
@@ -187,6 +195,9 @@ export function parseServiceKeys(rawValue: string | undefined): AuthResolverOpti
   );
 }
 
+/**
+ * Creates an auth resolver that accepts either a signed site JWT or an internal service key.
+ */
 export function createAuthResolver(options: AuthResolverOptions) {
   return {
     resolve(input: { authorization?: string; apiKey?: string; remoteAddress?: string }): AuthContext {
@@ -229,6 +240,9 @@ export function createAuthResolver(options: AuthResolverOptions) {
   };
 }
 
+/**
+ * Ensures the current auth context is allowed to access the requested filing regime.
+ */
 export function requireRegimeAccess(auth: AuthContext, regime: StatementSourceRegime): void {
   if (!auth.plan.regimes.includes(regime)) {
     throw new AuthorizationError(
@@ -242,6 +256,9 @@ export function requireRegimeAccess(auth: AuthContext, regime: StatementSourceRe
   }
 }
 
+/**
+ * Creates an in-memory hourly rate limiter keyed by subject, route, and plan.
+ */
 export function createInMemoryRateLimiter() {
   const buckets = new Map<string, RateLimitBucket>();
 
