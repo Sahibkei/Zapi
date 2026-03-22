@@ -6,7 +6,7 @@ import {
 } from "./errors";
 import type { StatementSourceRegime } from "./contracts";
 
-export type PlanId = "public" | "free" | "pro" | "scale";
+export type PlanId = "public" | "free" | "plus" | "pro" | "scale";
 export type AuthMode = "anonymous" | "site_jwt" | "service_key";
 
 export interface PlanDefinition {
@@ -54,6 +54,11 @@ interface JwtPayload {
   exp?: number;
 }
 
+/**
+ * Canonical auth plan matrix enforced by bearer-token and service-key traffic.
+ * Signed user plans are free, plus, and pro. Scale remains available for
+ * internal service-key workloads that need a separate high-volume tier.
+ */
 export const PLAN_DEFINITIONS: Record<PlanId, PlanDefinition> = {
   public: {
     id: "public",
@@ -65,23 +70,30 @@ export const PLAN_DEFINITIONS: Record<PlanId, PlanDefinition> = {
   free: {
     id: "free",
     label: "Free",
-    requestsPerHour: 250,
+    requestsPerHour: 100,
     regimes: ["sec_edgar"],
-    features: ["Signed site user", "US SEC coverage", "Higher hourly cap"]
+    features: ["Signed site user", "US SEC coverage", "Last 5 years historical depth"]
+  },
+  plus: {
+    id: "plus",
+    label: "Plus",
+    requestsPerHour: 500,
+    regimes: ["sec_edgar"],
+    features: ["Paid US plan", "US SEC coverage", "Excel plugin coming soon"]
   },
   pro: {
     id: "pro",
     label: "Pro",
-    requestsPerHour: 2500,
-    regimes: ["sec_edgar", "companies_house", "edinet"],
-    features: ["Higher hourly cap", "UK and Japan region access", "Priority support ready"]
+    requestsPerHour: 2000,
+    regimes: ["sec_edgar", "companies_house", "edinet", "india_placeholder"],
+    features: ["Full API access", "All configured regimes", "Higher production cap"]
   },
   scale: {
     id: "scale",
     label: "Scale",
     requestsPerHour: 10000,
     regimes: ["sec_edgar", "companies_house", "edinet", "india_placeholder"],
-    features: ["Highest hourly cap", "All configured regions", "Reserved future region access"]
+    features: ["Internal service access", "Highest hourly cap", "All configured regions"]
   }
 };
 
@@ -159,6 +171,9 @@ function resolvePlan(planId: PlanId | undefined): PlanDefinition {
   return PLAN_DEFINITIONS[planId ?? "free"];
 }
 
+/**
+ * Parses the JSON-encoded service-key map into normalized auth resolver entries.
+ */
 export function parseServiceKeys(rawValue: string | undefined): AuthResolverOptions["serviceKeys"] {
   if (!rawValue) {
     return {};
@@ -180,6 +195,9 @@ export function parseServiceKeys(rawValue: string | undefined): AuthResolverOpti
   );
 }
 
+/**
+ * Creates an auth resolver that accepts either a signed site JWT or an internal service key.
+ */
 export function createAuthResolver(options: AuthResolverOptions) {
   return {
     resolve(input: { authorization?: string; apiKey?: string; remoteAddress?: string }): AuthContext {
@@ -222,6 +240,9 @@ export function createAuthResolver(options: AuthResolverOptions) {
   };
 }
 
+/**
+ * Ensures the current auth context is allowed to access the requested filing regime.
+ */
 export function requireRegimeAccess(auth: AuthContext, regime: StatementSourceRegime): void {
   if (!auth.plan.regimes.includes(regime)) {
     throw new AuthorizationError(
@@ -235,6 +256,9 @@ export function requireRegimeAccess(auth: AuthContext, regime: StatementSourceRe
   }
 }
 
+/**
+ * Creates an in-memory hourly rate limiter keyed by subject, route, and plan.
+ */
 export function createInMemoryRateLimiter() {
   const buckets = new Map<string, RateLimitBucket>();
 

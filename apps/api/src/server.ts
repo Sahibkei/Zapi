@@ -170,9 +170,9 @@ function renderLandingPage(): string {
           <h2>Plan model</h2>
           <ul class="list">
             <li><code>public</code>: anonymous SEC access</li>
-            <li><code>free</code>: signed SEC users</li>
-            <li><code>pro</code>: higher limits plus UK and Japan</li>
-            <li><code>scale</code>: highest limits plus future regions</li>
+            <li><code>free</code>: signed US starter access</li>
+            <li><code>plus</code>: paid US access with a higher cap</li>
+            <li><code>pro</code>: full configured regime access</li>
           </ul>
         </article>
         <article class="card">
@@ -241,7 +241,7 @@ function renderIntegrationPage(): string {
     <main>
       <section class="panel">
         <h1>Integration Guide</h1>
-        <p>Use the normalized endpoint for app logic and the matrix endpoint for Morningstar-style rendering. Signed site users can be mapped to free or paid plans without changing the statement contract.</p>
+        <p>Use the normalized endpoint for app logic and the matrix endpoint for Morningstar-style rendering. Signed site users can be mapped to free, plus, or pro without changing the statement contract.</p>
       </section>
       <section class="panel">
         <h2>Recommended endpoint patterns</h2>
@@ -267,7 +267,7 @@ const remaining = response.headers.get("x-ratelimit-remaining");</code></pre>
       </section>
       <section class="panel">
         <h2>Region gating</h2>
-        <p><code>public</code> and <code>free</code> can use only <code>sec_edgar</code>. Paid plans unlock extra regimes as they come online.</p>
+        <p><code>public</code>, <code>free</code>, and <code>plus</code> stay on <code>sec_edgar</code>. <code>pro</code> unlocks all configured regimes as source readiness improves.</p>
       </section>
       <section class="panel">
         <h2>Rate-limit headers</h2>
@@ -386,21 +386,21 @@ function renderAuthPage(): string {
             </tr>
             <tr>
               <td>free</td>
-              <td>250</td>
+              <td>100</td>
               <td>SEC</td>
-              <td>Signed site users</td>
+              <td>Signed starter access</td>
+            </tr>
+            <tr>
+              <td>plus</td>
+              <td>500</td>
+              <td>SEC</td>
+              <td>Paid US-only access</td>
             </tr>
             <tr>
               <td>pro</td>
-              <td>2500</td>
-              <td>SEC, UK, Japan</td>
-              <td>Paid users with broader coverage</td>
-            </tr>
-            <tr>
-              <td>scale</td>
-              <td>10000</td>
+              <td>2000</td>
               <td>All configured regimes</td>
-              <td>Highest-volume or enterprise access</td>
+              <td>Paid users with broader coverage</td>
             </tr>
           </tbody>
         </table>
@@ -413,14 +413,14 @@ function renderAuthPage(): string {
   "email": "user@example.com",
   "name": "Example User",
   "plan": "free",
-  "iss": "your-site",
+  "iss": "zedxe",
   "aud": "zapi-api",
   "exp": 1767225600
 }</code></pre>
       </section>
       <section class="panel">
         <h2>Backend service key</h2>
-        <p>Your site backend can also call Zapi with <code>x-zapi-api-key</code> for server-to-server traffic. Configure keys with <code>ZAPI_SERVICE_KEYS</code>.</p>
+        <p>Your site backend can also call Zapi with <code>x-zapi-api-key</code> for server-to-server traffic. Configure keys with <code>ZAPI_SERVICE_KEYS</code>. Internal service keys can still use a separate <code>scale</code> plan if you want a non-user backend tier.</p>
       </section>
       <section class="panel">
         <h2>Environment</h2>
@@ -482,7 +482,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
   const authResolver = createAuthResolver({
     jwtSecret: process.env.ZAPI_JWT_SECRET,
-    jwtIssuer: process.env.ZAPI_JWT_ISSUER ?? "your-site",
+    jwtIssuer: process.env.ZAPI_JWT_ISSUER ?? "zedxe",
     jwtAudience: process.env.ZAPI_JWT_AUDIENCE ?? "zapi-api",
     serviceKeys: parseServiceKeys(process.env.ZAPI_SERVICE_KEYS)
   });
